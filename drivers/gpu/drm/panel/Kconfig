@@ -135,6 +135,17 @@ config DRM_PANEL_FEIYANG_FY07024DI26A30D
 	  Say Y if you want to enable support for panels based on the
 	  Feiyang FY07024DI26A30-D MIPI-DSI interface.
 
+config DRM_PANEL_HUAXING_FT8756
+	tristate "Huaxing FT8756 DSI panel"
+	depends on OF
+	depends on DRM_MIPI_DSI
+	depends on BACKLIGHT_CLASS_DEVICE
+	help
+	  Say Y here if you want to enable support for the Huaxing FT8756
+	  video mode panel. Mainly found on Xiaomi Redmi Note 9S mobile phone.
+	  The panel has a resolution of 1080x2400. It provides a MIPI DSI
+	  interface to the host.
+
 config DRM_PANEL_DSI_CM
 	tristate "Generic DSI command mode panels"
 	depends on OF
