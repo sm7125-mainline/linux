@@ -773,6 +773,7 @@ static const struct adreno_info a6xx_gpus[] = {
 		.init = a6xx_gpu_init,
 		.zapfw = "a615_zap.mbn",
 		.a6xx = &(const struct a6xx_info) {
+			.hwcg = a615_hwcg,
 			.protect = &a630_protect,
 			.gmu_cgc_mode = 0x00000222,
 			.prim_fifo_threshold = 0x00180000,
