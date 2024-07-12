@@ -1111,6 +1111,16 @@ config CHARGER_BD99954
 	  information and altering charger configurations from the ROHM
 	  BD99954 charger IC.
 
+config CHARGER_SM5714
+	tristate "Silicon Mitus SM5714 Charger support"
+	depends on I2C
+	help
+	  Say Y here to enable support for the Charger unit of the SM5714
+	  multi-function device.
+
+	  This driver can also be built as a module. If so, the module will be
+	  called sm5714-charger.
+
 config CHARGER_WILCO
 	tristate "Wilco EC based charger for ChromeOS"
 	depends on WILCO_EC
@@ -1213,6 +1223,16 @@ config FUEL_GAUGE_MM8013
 	  It enables the monitoring of many battery parameters, including
 	  the state of charge, temperature, cycle count, actual and design
 	  capacity, etc.
+
+config FUEL_GAUGE_SM5714
+	tristate "Silicon Mitus SM5714 Fuel Gauge support"
+	depends on I2C
+	help
+	  Say Y here to enable support for the Fuel-Gauge unit of the SM5714
+	  multi-function device.
+
+	  This driver can also be built as a module. If so, the module will be
+	  called sm5714-fg.
 
 config MACSMC_POWER
 	tristate "Apple SMC Battery and Power Driver"
