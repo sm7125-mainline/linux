@@ -1416,4 +1416,14 @@ config TOUCHSCREEN_HIMAX_HX83112B
 	  To compile this driver as a module, choose M here: the
 	  module will be called himax_hx83112b.
 
+config TOUCHSCREEN_STMFTS_FTS5CU56A
+	tristate "STMicroelectronics STMFTS_FTS5CU56A touchscreen"
+	depends on I2C
+	help
+	  Say Y here if you want support for STMicroelectronics
+	  STMFTS_FTS5CU56A touchscreen.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called stmfts.
+
 endif
