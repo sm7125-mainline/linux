@@ -1504,6 +1504,29 @@ static const struct camss_subdev_resources vfe_res_7180[] = {
 	}
 };
 
+static const struct resources_icc icc_res_7180[] = {
+	{
+		.name = "cam_ahb",
+		.icc_bw_tbl.avg = 125000,
+		.icc_bw_tbl.peak = 250000,
+	},
+	{
+		.name = "cam_hf_0_camnoc",
+		.icc_bw_tbl.avg = 2097152,
+		.icc_bw_tbl.peak = 2097152,
+	},
+	{
+		.name = "cam_hf_1_camnoc",
+		.icc_bw_tbl.avg = 2097152,
+		.icc_bw_tbl.peak = 2097152,
+	},
+	{
+		.name = "cam_sf_camnoc",
+		.icc_bw_tbl.avg = 2097152,
+		.icc_bw_tbl.peak = 2097152,
+	},
+};
+
 static const struct camss_subdev_resources csiphy_res_sc8280xp[] = {
 	/* CSIPHY0 */
 	{
@@ -2851,6 +2874,8 @@ static const struct camss_resources sc7180_resources = {
 	.csiphy_res = csiphy_res_7180,
 	.csid_res = csid_res_7180,
 	.vfe_res = vfe_res_7180,
+	.icc_res = icc_res_7180,
+	.icc_path_num = ARRAY_SIZE(icc_res_7180),
 	.csiphy_num = ARRAY_SIZE(csiphy_res_7180),
 	.csid_num = ARRAY_SIZE(csid_res_7180),
 	.vfe_num = ARRAY_SIZE(vfe_res_7180),
