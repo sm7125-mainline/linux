@@ -167,6 +167,8 @@
 			io-channel-names = "batt-therm",
 					   "batt-id";
 
+			nvmem = <&pm6150_qg_sdam>;
+
 			status = "disabled";
 		};
 
@@ -176,6 +178,14 @@
 			reg-names = "rtc", "alarm";
 			interrupts = <0x0 0x61 0x1 IRQ_TYPE_EDGE_RISING>;
 			status = "disabled";
+		};
+
+		pm6150_qg_sdam: nvram@b600 {
+			compatible = "qcom,spmi-sdam";
+			reg = <0xb600>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges = <0 0xb600 0x100>;
 		};
 
 		pm6150_gpios: gpio@c000 {
