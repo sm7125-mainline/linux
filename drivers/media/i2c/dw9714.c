@@ -32,12 +32,17 @@
 #define DW9714_DEFAULT_S 0x0
 #define DW9714_VAL(data, s) ((data) << 4 | (s))
 
+static const char * const dw9714_supply_names[] = {
+	"vin",
+	"vcc",
+};
+
 /* dw9714 device structure */
 struct dw9714_device {
 	struct v4l2_ctrl_handler ctrls_vcm;
 	struct v4l2_subdev sd;
 	u16 current_val;
-	struct regulator *vcc;
+	struct regulator_bulk_data supplies[ARRAY_SIZE(dw9714_supply_names)];
 };
 
 static inline struct dw9714_device *to_dw9714_vcm(struct v4l2_ctrl *ctrl)
@@ -147,13 +152,20 @@ static int dw9714_probe(struct i2c_client *client)
 	if (dw9714_dev == NULL)
 		return -ENOMEM;
 
-	dw9714_dev->vcc = devm_regulator_get(&client->dev, "vcc");
-	if (IS_ERR(dw9714_dev->vcc))
-		return PTR_ERR(dw9714_dev->vcc);
+	for (unsigned int i = 0; i < ARRAY_SIZE(dw9714_supply_names); i++)
+		dw9714_dev->supplies[i].supply = dw9714_supply_names[i];
 
-	rval = regulator_enable(dw9714_dev->vcc);
+	rval = devm_regulator_bulk_get(&client->dev, ARRAY_SIZE(dw9714_supply_names),
+				      dw9714_dev->supplies);
+	if (rval) {
+		dev_err(&client->dev, "failed to get regulators\n");
+		return rval;
+	}
+
+	rval = regulator_bulk_enable(ARRAY_SIZE(dw9714_supply_names),
+				    dw9714_dev->supplies);
 	if (rval < 0) {
-		dev_err(&client->dev, "failed to enable vcc: %d\n", rval);
+		dev_err(&client->dev, "failed to enable regulators: %d\n", rval);
 		return rval;
 	}
 
@@ -185,7 +197,8 @@ static int dw9714_probe(struct i2c_client *client)
 	return 0;
 
 err_cleanup:
-	regulator_disable(dw9714_dev->vcc);
+	regulator_bulk_disable(ARRAY_SIZE(dw9714_supply_names),
+			       dw9714_dev->supplies);
 	v4l2_ctrl_handler_free(&dw9714_dev->ctrls_vcm);
 	media_entity_cleanup(&dw9714_dev->sd.entity);
 
@@ -200,10 +213,11 @@ static void dw9714_remove(struct i2c_client *client)
 
 	pm_runtime_disable(&client->dev);
 	if (!pm_runtime_status_suspended(&client->dev)) {
-		ret = regulator_disable(dw9714_dev->vcc);
+		ret = regulator_bulk_disable(ARRAY_SIZE(dw9714_supply_names),
+			       dw9714_dev->supplies);
 		if (ret) {
 			dev_err(&client->dev,
-				"Failed to disable vcc: %d\n", ret);
+				"Failed to disable regulators: %d\n", ret);
 		}
 	}
 	pm_runtime_set_suspended(&client->dev);
@@ -234,9 +248,10 @@ static int __maybe_unused dw9714_vcm_suspend(struct device *dev)
 		usleep_range(DW9714_CTRL_DELAY_US, DW9714_CTRL_DELAY_US + 10);
 	}
 
-	ret = regulator_disable(dw9714_dev->vcc);
+	ret = regulator_bulk_disable(ARRAY_SIZE(dw9714_supply_names),
+			       dw9714_dev->supplies);
 	if (ret)
-		dev_err(dev, "Failed to disable vcc: %d\n", ret);
+		dev_err(dev, "Failed to disable regulators: %d\n", ret);
 
 	return ret;
 }
@@ -257,9 +272,10 @@ static int  __maybe_unused dw9714_vcm_resume(struct device *dev)
 	if (pm_runtime_suspended(&client->dev))
 		return 0;
 
-	ret = regulator_enable(dw9714_dev->vcc);
+	ret = regulator_bulk_enable(ARRAY_SIZE(dw9714_supply_names),
+				    dw9714_dev->supplies);
 	if (ret) {
-		dev_err(dev, "Failed to enable vcc: %d\n", ret);
+		dev_err(dev, "Failed to enable regulators: %d\n", ret);
 		return ret;
 	}
 	usleep_range(1000, 2000);
