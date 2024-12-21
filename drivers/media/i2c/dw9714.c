@@ -33,13 +33,18 @@
 #define DW9714_DEFAULT_S 0x0
 #define DW9714_VAL(data, s) ((data) << 4 | (s))
 
+static const struct regulator_bulk_data dw9714_supplies[] = {
+	{ .supply = "vin" },
+	{ .supply = "vcc" },
+};
+
 /* dw9714 device structure */
 struct dw9714_device {
 	struct v4l2_ctrl_handler ctrls_vcm;
 	struct v4l2_subdev sd;
 	u16 current_val;
-	struct regulator *vcc;
 	struct gpio_desc *powerdown_gpio;
+	struct regulator_bulk_data *supplies;
 };
 
 static inline struct dw9714_device *to_dw9714_vcm(struct v4l2_ctrl *ctrl)
@@ -143,7 +148,8 @@ static int dw9714_power_up(struct dw9714_device *dw9714_dev)
 {
 	int ret;
 
-	ret = regulator_enable(dw9714_dev->vcc);
+	ret = regulator_bulk_enable(ARRAY_SIZE(dw9714_supplies),
+				    dw9714_dev->supplies);
 	if (ret)
 		return ret;
 
@@ -158,7 +164,8 @@ static int dw9714_power_down(struct dw9714_device *dw9714_dev)
 {
 	gpiod_set_value_cansleep(dw9714_dev->powerdown_gpio, 1);
 
-	return regulator_disable(dw9714_dev->vcc);
+	return regulator_bulk_disable(ARRAY_SIZE(dw9714_supplies),
+				      dw9714_dev->supplies);
 }
 
 static int dw9714_probe(struct i2c_client *client)
@@ -170,10 +177,6 @@ static int dw9714_probe(struct i2c_client *client)
 	if (!dw9714_dev)
 		return -ENOMEM;
 
-	dw9714_dev->vcc = devm_regulator_get(&client->dev, "vcc");
-	if (IS_ERR(dw9714_dev->vcc))
-		return PTR_ERR(dw9714_dev->vcc);
-
 	dw9714_dev->powerdown_gpio = devm_gpiod_get_optional(&client->dev,
 							     "powerdown",
 							     GPIOD_OUT_HIGH);
@@ -181,6 +184,21 @@ static int dw9714_probe(struct i2c_client *client)
 		return dev_err_probe(&client->dev,
 				     PTR_ERR(dw9714_dev->powerdown_gpio),
 				     "could not get powerdown gpio\n");
+	rval = devm_regulator_bulk_get_const(&client->dev,
+					     ARRAY_SIZE(dw9714_supplies),
+					     dw9714_supplies,
+					     &dw9714_dev->supplies);
+	if (rval) {
+		dev_err(&client->dev, "failed to get regulators\n");
+		return rval;
+	}
+
+	rval = regulator_bulk_enable(ARRAY_SIZE(dw9714_supplies),
+				    dw9714_dev->supplies);
+	if (rval < 0) {
+		dev_err(&client->dev, "failed to enable regulators: %d\n", rval);
+		return rval;
+	}
 
 	rval = dw9714_power_up(dw9714_dev);
 	if (rval)
@@ -214,6 +232,8 @@ static int dw9714_probe(struct i2c_client *client)
 
 err_cleanup:
 	dw9714_power_down(dw9714_dev);
+	regulator_bulk_disable(ARRAY_SIZE(dw9714_supplies),
+			       dw9714_dev->supplies);
 	v4l2_ctrl_handler_free(&dw9714_dev->ctrls_vcm);
 	media_entity_cleanup(&dw9714_dev->sd.entity);
 
