@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2025 Vitalii Skorkin <nikroksm@mail.ru>
  */
 
 /dts-v1/;
@@ -8,7 +9,10 @@
 #include <dt-bindings/arm/qcom,ids.h>
 #include <dt-bindings/firmware/qcom,scm.h>
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/leds/common.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
+#include <dt-bindings/usb/pd.h>
+#include <dt-bindings/sound/qcom,q6asm.h>
 #include "sm7125.dtsi"
 #include "pm6150.dtsi"
 #include "pm6150l.dtsi"
@@ -25,16 +29,21 @@
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
+	};
 
-		framebuffer@9c000000 {
-			compatible = "simple-framebuffer";
-			reg = <0x0 0x9c000000 0x0 (1080 * 2400 * 4)>;
-			width = <1080>;
-			height = <2400>;
-			stride = <(1080 * 4)>;
-			format = "a8r8g8b8";
-			clocks = <&gcc GCC_DISP_HF_AXI_CLK>;
-		};
+	aliases {
+		bluetooth0 = &bluetooth;
+		hsuart0 = &uart3;
+		wifi0 = &wifi;
+	};
+
+	battery: battery {
+		compatible = "simple-battery";
+
+		charge-full-design-microamp-hours = <5020000>;
+
+		voltage-min-design-microvolt = <3400000>;
+		voltage-max-design-microvolt = <4400000>;
 	};
 
 	gpio_keys: gpio-keys {
@@ -58,11 +67,6 @@
 
 		venus_mem: memory@8ee00000 {
 			reg = <0x0 0x8ee00000 0x0 0x500000>;
-			no-map;
-		};
-
-		cdsp_mem: memory@8f300000 {
-			reg = <0x0 0x8f300000 0x0 0x1e00000>;
 			no-map;
 		};
 
@@ -107,6 +111,44 @@
 			qcom,client-id = <1>;
 			qcom,vmid = <QCOM_SCM_VMID_MSS_MSA>;
 		};
+	};
+
+	wcd937x: codec {
+		compatible = "qcom,wcd9375-codec";
+
+		reset-gpios = <&tlmm 58 GPIO_ACTIVE_LOW>;
+
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&wcd_reset_n>;
+		pinctrl-1 = <&wcd_reset_n_sleep>;
+
+		vdd-buck-supply = <&vreg_l15a_1p8>;
+		vdd-rxtx-supply = <&vreg_l10a_1p8>;
+		vdd-px-supply = <&vreg_l10a_1p8>;
+		vdd-mic-bias-supply = <&vreg_bob>;
+
+		qcom,micbias1-microvolt = <1800000>;
+		qcom,micbias2-microvolt = <1800000>;
+		qcom,micbias3-microvolt = <1800000>;
+		qcom,micbias4-microvolt = <1800000>;
+		qcom,mbhc-buttons-vthreshold-microvolt = <75000 150000 237000 500000 500000 500000 500000 500000>;
+		qcom,mbhc-headset-vthreshold-microvolt = <1700000>;
+		qcom,mbhc-headphone-vthreshold-microvolt = <50000>;
+		qcom,rx-device = <&wcd_rx>;
+		qcom,tx-device = <&wcd_tx>;
+
+		#sound-dai-cells = <1>;
+	};
+};
+
+&pm6150l_gpios {
+	panel_reset_pins: panel-reset{
+		pins = "gpio3";
+		function = "func1";
+		qcom,drive-strength = <2>;
+		power-source = <0>;
+		bias-disable;
+		output-low;
 	};
 };
 
@@ -328,9 +370,131 @@
 	};
 };
 
-&dispcc {
-	/* HACK: disable until a panel driver is ready to retain simplefb */
-	status = "disabled";
+&mdss {
+	status = "okay";
+};
+
+&mdss_dsi0 {
+	vdda-supply = <&vreg_l3c_1p23>;
+	status = "okay";
+
+	panel: panel@0 {
+		reg = <0>;
+
+		vddio-supply = <&vreg_l18a_3p0>;
+
+		reset-gpios = <&pm6150l_gpios 3 GPIO_ACTIVE_LOW>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&panel_reset_pins &panel_te_pin>;
+
+		backlight = <&pm6150l_wled>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&mdss_dsi0_out>;
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	remote-endpoint = <&panel_in>;
+	data-lanes = <0 1 2 3>;
+};
+
+&mdss_dsi0_phy {
+	status = "okay";
+};
+
+// Because miatoll uses SM7125-AB with reduced gpu frequencies
+/delete-node/ &gpu_opp_table;
+&gpu {
+	gpu_opp_table: opp-table {
+		compatible = "operating-points-v2";
+
+		opp-750000000 {
+			opp-hz = /bits/ 64 <750000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_NOM_L1>;
+			opp-peak-kBps = <7216000>;
+			opp-supported-hw = <0x08>;
+		};
+
+		opp-650000000 {
+			opp-hz = /bits/ 64 <650000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_NOM_L1>;
+			opp-peak-kBps = <7216000>;
+			opp-supported-hw = <0x08>;
+		};
+
+		opp-565000000 {
+			opp-hz = /bits/ 64 <565000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_NOM>;
+			opp-peak-kBps = <5412000>;
+			opp-supported-hw = <0x08>;
+		};
+
+		opp-430000000 {
+			opp-hz = /bits/ 64 <430000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_SVS_L1>;
+			opp-peak-kBps = <5412000>;
+			opp-supported-hw = <0x08>;
+		};
+
+		opp-355000000 {
+			opp-hz = /bits/ 64 <355000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_SVS>;
+			opp-peak-kBps = <3072000>;
+			opp-supported-hw = <0x08>;
+		};
+
+		opp-267000000 {
+			opp-hz = /bits/ 64 <267000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_LOW_SVS>;
+			opp-peak-kBps = <3072000>;
+			opp-supported-hw = <0x08>;
+		};
+
+		opp-180000000 {
+			opp-hz = /bits/ 64 <180000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_MIN_SVS>;
+			opp-peak-kBps = <1804000>;
+			opp-supported-hw = <0x08>;
+		};
+	};
+
+	zap-shader {
+		firmware-name = "qcom/sm7125/miatoll/a615_zap.mbn";
+		memory-region = <&gpu_mem>;
+	};
+};
+
+&ipa {
+	firmware-name = "qcom/sm7125/miatoll/ipa_fws.mbn";
+	memory-region = <&ipa_fw_mem>;
+	status = "okay";
+};
+
+&pm6150l_lpg {
+	status = "okay";
+
+	led@1 {
+		reg = <1>;
+		color = <LED_COLOR_ID_WHITE>;
+		function = LED_FUNCTION_STATUS;
+	};
+};
+
+&pm6150l_wled {
+	qcom,cabc;
+	qcom,cabc-sel = <1>;
+	qcom,num-strings = <3>;
+	status = "okay";
+};
+
+&pm6150_qgauge {
+	monitored-battery = <&battery>;
+	status = "okay";
 };
 
 &pm6150_resin {
@@ -339,6 +503,96 @@
 };
 
 &pm6150_rtc {
+	status = "okay";
+};
+
+&pm6150_typec {
+	vdd-vbus-supply = <&pm6150_vbus>;
+	vdd-pdphy-supply = <&vreg_l17a_3p1>;
+	status = "okay";
+
+	connector {
+		compatible = "usb-c-connector";
+
+		power-role = "source";
+		data-role = "dual";
+		self-powered;
+
+		source-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE |
+				PDO_FIXED_USB_COMM | PDO_FIXED_DATA_SWAP)>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				pm6150_role_switch_in: endpoint {
+					remote-endpoint = <&usb_1_dwc3_hs>;
+				};
+			};
+		};
+	};
+};
+
+&pm6150_vbus {
+	regulator-min-microamp = <500000>;
+	regulator-max-microamp = <3000000>;
+	status = "okay";
+};
+
+&pm6150l_flash {
+	status = "okay";
+
+	led-1 {
+		function = LED_FUNCTION_FLASH;
+		color = <LED_COLOR_ID_WHITE>;
+		led-sources = <1>;
+		led-max-microamp = <150000>;
+		flash-max-microamp = <1000000>;
+		flash-max-timeout-us = <1280000>;
+	};
+};
+
+&wifi {
+	status = "okay";
+
+	vdd-0.8-cx-mx-supply = <&vreg_l9a_0p664>;
+	vdd-1.8-xo-supply = <&vreg_l1c_1p8>;
+	vdd-1.3-rfa-supply = <&vreg_l2c_1p3>;
+	vdd-3.3-ch0-supply = <&vreg_l10c_3p3>;
+	vdd-3.3-ch1-supply = <&vreg_l11c_3p3>;
+};
+
+&qupv3_id_0 {
+	status = "okay";
+};
+
+&qupv3_id_1 {
+	status = "okay";
+};
+
+&gpi_dma0 {
+	status = "okay";
+};
+
+&gpi_dma1 {
+	status = "okay";
+};
+
+&remoteproc_adsp {
+	memory-region = <&adsp_mem>;
+	firmware-name = "qcom/sm7125/miatoll/adsp.mbn";
+	status = "okay";
+};
+
+&remoteproc_cdsp {
+	firmware-name = "qcom/sm7125/miatoll/cdsp.mbn";
+	status = "okay";
+};
+
+&remoteproc_mpss {
+	firmware-name = "qcom/sm7125/miatoll/modem.mbn";
 	status = "okay";
 };
 
@@ -408,6 +662,334 @@
 			drive-strength = <2>;
 		};
 	};
+
+	qup_uart3_sleep: qup-uart3-sleep-state {
+		pinmux {
+			pins = "gpio38", "gpio39",
+				"gpio40", "gpio41";
+			function = "gpio";
+		};
+
+		pinconf-cts {
+			/*
+			 * Configure a pull-down on CTS to match the pull of
+			 * the Bluetooth module.
+			 */
+			pins = "gpio38";
+			bias-pull-down;
+		};
+
+		pinconf-rts {
+			/*
+			 * Configure pull-down on RTS. As RTS is active low
+			 * signal, pull it low to indicate the BT SoC that it
+			 * can wakeup the system anytime from suspend state by
+			 * pulling RX low (by sending wakeup bytes).
+			 */
+			pins = "gpio39";
+			bias-pull-down;
+		};
+
+		pinconf-tx {
+			/*
+			 * Configure pull-up on TX when it isn't actively driven
+			 * to prevent BT SoC from receiving garbage during sleep.
+			 */
+			pins = "gpio40";
+			bias-pull-up;
+		};
+
+		pinconf-rx {
+			/*
+			 * Configure a pull-up on RX. This is needed to avoid
+			 * garbage data when the TX pin of the Bluetooth module
+			 * is floating which may cause spurious wakeups.
+			 */
+			pins = "gpio41";
+			bias-pull-up;
+		};
+	};
+
+	ts_reset_active: ts-reset-active-state {
+		pins = "gpio8";
+		function = "gpio";
+		drive-strength = <16>;
+		bias-pull-up;
+	};
+
+	ts_reset_suspend: ts-reset-suspend-state {
+		pins = "gpio8";
+		function = "gpio";
+		drive-strength = <16>;
+		bias-disable;
+		output-high;
+	};
+
+	ts_int_active: ts-int-active-state {
+		pins = "gpio9";
+		function = "gpio";
+		drive-strength = <16>;
+		bias-pull-up;
+	};
+
+	ts_int_suspend: ts-int-suspend-state {
+		pins = "gpio9";
+		function = "gpio";
+		drive-strength = <16>;
+		input-enable;
+		bias-disable;
+	};
+
+	panel_te_pin: panel-te {
+		mux {
+			pins = "gpio10";
+			function = "mdp_vsync";
+			drive-strength = <2>;
+			bias-pull-down;
+		};
+	};
+
+	ter_mi2s_active: ter-mi2s-active-state {
+		pins = "gpio63", "gpio64", "gpio65", "gpio66";
+		function = "mi2s_2";
+	};
+
+	wcd_reset_n: wcd-reset-n-state {
+		pins = "gpio58";
+		function = "gpio";
+		drive-strength = <8>;
+	};
+
+	wcd_reset_n_sleep: wcd-reset-n-sleep-state {
+		pins = "gpio58";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-disable;
+	};
+};
+
+&i2c9 {
+	status = "okay";
+	clock-frequency = <100000>;
+
+	tas2562: codec@4c {
+			compatible = "ti,tas2562";
+			reg = <0x4c>;
+			#sound-dai-cells = <0>;
+			interrupt-parent = <&tlmm>;
+			interrupts = <33 0>;
+			shutdown-gpios = <&tlmm 51 0>;
+			ti,vmon-slot-no = <2>;
+			ti,imon-slot-no = <0>;
+	};
+};
+
+&spi10 {
+	status = "okay";
+	clock-frequency = <50000000>;
+
+	irled@0 {
+		compatible = "ir-spi-led";
+		reg = <0x0>;
+
+		spi-max-frequency = <19200000>;
+		power-supply = <&vreg_bob>;
+		duty-cycle = /bits/ 8 <60>;
+		led-active-low;
+	};
+};
+
+&spi11 {
+	status = "okay";
+	clock-frequency = <8000000>;
+
+	touchscreen: touchscreen@0 {
+		reg = <0>;
+
+		spi-max-frequency = <8000000>;
+
+		pinctrl-0 = <&ts_int_active &ts_reset_active>;
+		pinctrl-1 = <&ts_int_suspend &ts_reset_suspend>;
+		pinctrl-names = "default", "sleep";
+
+		reset-gpio = <&tlmm 8 GPIO_ACTIVE_HIGH>;
+		irq-gpio = <&tlmm 9 IRQ_TYPE_EDGE_FALLING>;
+
+		vio-supply = <&vreg_l18a_3p0>;
+
+		panel = <&panel>;
+	};
+};
+
+&sound {
+	compatible = "qcom,sm8250-sndcard";
+	pinctrl-0 = <&ter_mi2s_active>;
+	pinctrl-names = "default";
+	model = "Xiaomi-miatoll";
+	audio-routing =
+		"IN1_HPHL", "HPHL_OUT",
+		"IN2_HPHR", "HPHR_OUT",
+		"AMIC1", "MIC BIAS1",
+		"AMIC2", "MIC BIAS2",
+		"AMIC3", "MIC BIAS3",
+		"TX SWR_ADC0", "ADC1_OUTPUT",
+		"TX SWR_ADC2", "ADC2_OUTPUT";
+
+	mm1-dai-link {
+		link-name = "MultiMedia1";
+		cpu {
+			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA1>;
+		};
+	};
+
+	mm2-dai-link {
+		link-name = "MultiMedia2";
+		cpu {
+			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA2>;
+		};
+	};
+
+	mm3-dai-link {
+		link-name = "MultiMedia3";
+		cpu {
+			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA3>;
+		};
+	};
+
+	i2s-dai-link {
+		link-name = "I2S Playback";
+		cpu {
+			sound-dai = <&q6afedai TERTIARY_MI2S_RX>;
+		};
+
+		platform {
+			sound-dai = <&q6routing>;
+		};
+
+		codec {
+			sound-dai = <&tas2562>;
+		};
+	};
+
+	wcd-playback-dai-link {
+		link-name = "WCD Playback";
+		cpu {
+			sound-dai = <&q6afedai RX_CODEC_DMA_RX_0>;
+		};
+
+		codec {
+			sound-dai = <&wcd937x 0>, <&swr1 0>, <&rxmacro 0>;
+		};
+
+		platform {
+			sound-dai = <&q6routing>;
+		};
+	};
+
+	wcd-capture-dai-link {
+		link-name = "WCD Capture";
+		cpu {
+			sound-dai = <&q6afedai TX_CODEC_DMA_TX_3>;
+		};
+
+		codec {
+			sound-dai = <&wcd937x 1>, <&swr2 0>, <&txmacro 0>;
+		};
+
+		platform {
+			sound-dai = <&q6routing>;
+		};
+	};
+};
+
+&swr1 {
+	status = "okay";
+
+	wcd_rx: codec@0,4 {
+		compatible = "sdw20217010a00";
+		reg = <0 4>;
+
+		qcom,rx-port-mapping = <1 2 3 4 5>;
+	};
+};
+
+&swr2 {
+	status = "okay";
+	wcd_tx: codec@0,3 {
+		compatible = "sdw20217010a00";
+		reg = <0 3>;
+
+		qcom,tx-port-mapping = <2 3 4 5>;
+	};
+};
+
+&q6afedai {
+	dai@20 {
+		reg = <TERTIARY_MI2S_RX>;
+		qcom,sd-lines = <0>;
+	};
+
+	dai@113 {
+		reg = <RX_CODEC_DMA_RX_0>;
+	};
+
+	dai@120 {
+		reg = <TX_CODEC_DMA_TX_3>;
+	};
+};
+
+&q6asmdai {
+	dai@0 {
+		reg = <0>;
+	};
+
+	dai@1 {
+		reg = <1>;
+	};
+
+	dai@2 {
+		reg = <2>;
+	};
+};
+
+&qfprom {
+	vcc-supply = <&vreg_l11a_1p8>;
+};
+
+&rxmacro {
+	status = "okay";
+};
+
+&txmacro {
+	status = "okay";
+};
+
+&vamacro {
+	qcom,dmic-sample-rate = <600000>;
+	status = "okay";
+};
+
+&uart3 {
+	/delete-property/interrupts;
+	interrupts-extended = <&intc GIC_SPI 604 IRQ_TYPE_LEVEL_HIGH>,
+				<&tlmm 41 IRQ_TYPE_EDGE_FALLING>;
+
+	pinctrl-names = "default", "sleep";
+	pinctrl-1 = <&qup_uart3_sleep>;
+
+	status = "okay";
+
+	bluetooth: bluetooth {
+		compatible = "qcom,wcn3991-bt";
+
+		vddio-supply = <&vreg_l10a_1p8>;
+		vddxo-supply = <&vreg_l1c_1p8>;
+		vddrf-supply = <&vreg_l2c_1p3>;
+		vddch0-supply = <&vreg_l10c_3p3>;
+		swctrl-gpios = <&tlmm 73 GPIO_ACTIVE_HIGH>;
+
+		max-speed = <3200000>;
+	};
 };
 
 &ufs_mem_hc {
@@ -427,14 +1009,22 @@
 };
 
 &usb_1 {
+	/* USB 2.0 only */
 	qcom,select-utmi-as-pipe-clk;
 	status = "okay";
 };
 
 &usb_1_dwc3 {
-	dr_mode = "peripheral";
+	dr_mode = "otg";
 	maximum-speed = "high-speed";
-	status = "okay";
+	/* Remove USB3 phy */
+	phys = <&usb_1_hsphy>;
+	phy-names = "usb2-phy";
+	usb-role-switch;
+};
+
+&usb_1_dwc3_hs {
+	remote-endpoint = <&pm6150_role_switch_in>;
 };
 
 &usb_1_hsphy {
@@ -444,8 +1034,7 @@
 	status = "okay";
 };
 
-&usb_1_qmpphy {
-	vdda-phy-supply = <&vreg_l4a_0p88>;
-	vdda-pll-supply = <&vreg_l3c_1p23>;
+&venus {
+	firmware-name = "qcom/sm7125/miatoll/venus.mbn";
 	status = "okay";
 };
