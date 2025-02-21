@@ -1,0 +1,288 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (c) 2023, Joe Mason <buddyjojo06@outlook.com>
+ * Copyright (C) 2025 Vitalii Skorkin <nikroksm@mail.ru>
+ */
+
+/dts-v1/;
+
+#include "sm7125-xiaomi-common.dtsi"
+
+/ {
+	compatible = "xiaomi,miatoll", "xiaomi,curtana", "qcom,sm7125";
+	/* required for bootloader to select correct board */
+	qcom,board-id = <0x20022 1>;
+
+	ultra_avdd_2p8: regulator-ultra-avdd-2p8 {
+		compatible = "regulator-fixed";
+		regulator-name = "ultra_avdd_2p8";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		regulator-enable-ramp-delay = <100>;
+		enable-active-high;
+		gpio = <&pm6150l_gpios 8 0>;
+		vin-supply = <&vreg_bob>;
+	};
+
+	ultra_dvdd_1p2: regulator-ultra-dvdd-1p2 {
+		compatible = "regulator-fixed";
+		regulator-name = "ultra_dvdd_1p2";
+		regulator-min-microvolt = <1200000>;
+		regulator-max-microvolt = <1200000>;
+		regulator-enable-ramp-delay = <100>;
+		enable-active-high;
+		gpio = <&tlmm 72 0>;
+		vin-supply = <&vreg_s5a_2p0>;
+	};
+
+	wide_afvdd_2p8: regulator-wide-afvdd-2p8 {
+		compatible = "regulator-fixed";
+		regulator-name = "wide_afvdd_2p8";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		regulator-enable-ramp-delay = <100>;
+		enable-active-high;
+		gpio = <&pm6150l_gpios 6 0>;
+		vin-supply = <&vreg_bob>;
+	};
+
+	wide_avdd1_2p8: regulator-wide-avdd1-2p8 {
+		compatible = "regulator-fixed";
+		regulator-name = "wide_avdd1_2p8";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		regulator-enable-ramp-delay = <100>;
+		enable-active-high;
+		gpio = <&pm6150l_gpios 9 0>;
+		vin-supply = <&vreg_bob>;
+	};
+
+	wide_dvdd_1p2: regulator-wide-dvdd1-1p2 {
+		compatible = "regulator-fixed";
+		regulator-name = "wide_dvdd_1p2";
+		regulator-min-microvolt = <1200000>;
+		regulator-max-microvolt = <1200000>;
+		regulator-enable-ramp-delay = <100>;
+		enable-active-high;
+		gpio = <&tlmm 42 0>;
+		vin-supply = <&vreg_s5a_2p0>;
+	};
+};
+
+&camss {
+	vdda-phy-supply = <&vreg_l4a_0p88>;
+	vdda-pll-supply = <&vreg_l3c_1p23>;
+	status = "okay";
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@1 {
+			csiphy1_ep: endpoint {
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&cam_s5kgm2_ep>;
+			};
+		};
+
+		port@2 {
+			csiphy2_ep: endpoint {
+				data-lanes = <0 1>;
+				remote-endpoint = <&cam_s5k5e9_ep>;
+			};
+		};
+
+		port@3 {
+			csiphy3_ep: endpoint {
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&cam_ov16a1q_ep>;
+			};
+		};
+	};
+};
+
+&cci0 {
+	status = "okay";
+};
+
+&cci1 {
+	status = "okay";
+};
+
+&cci0_i2c0 {
+	status = "okay";
+
+	/* S5KGM2 EEPROM @ 0x51 */
+	/* S5KGM2 dw9800 VCM @ 0xC */
+
+	s5kgm2@10 {
+		compatible = "samsung,s5kgm2";
+		reg = <0x10>;
+
+		vio-supply = <&vreg_l13a_1p8>;
+		vana-supply = <&wide_avdd1_2p8>;
+		vdig-supply = <&wide_dvdd_1p2>;
+
+		clocks = <&camcc CAM_CC_MCLK1_CLK>;
+		clock-names = "xvclk";
+		clock-frequency = <19200000>;
+		assigned-clocks = <&camcc CAM_CC_MCLK1_CLK>;
+		assigned-clock-rates = <19200000>;
+
+		reset-gpios = <&tlmm 25 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_s5kgm2_default>;
+
+		orientation = <1>;
+		rotation = <270>;
+
+		port {
+			cam_s5kgm2_ep: endpoint {
+				data-lanes = <0 1 2 3>;
+				link-frequencies = /bits/ 64 <720000000>;
+				remote-endpoint = <&csiphy1_ep>;
+			};
+		};
+	};
+};
+
+&cci0_i2c1 {
+	status = "okay";
+
+	/* S5K5E9 EEPROM @ 0x51 */
+
+	s5k5e9_vcm: dw9714@c {
+		compatible = "dongwoon,dw9714";
+		reg = <0x0c>;
+		vcc-supply = <&wide_afvdd_2p8>;
+		vin-supply = <&vreg_l13a_1p8>;
+	};
+
+	s5k5e9@2d {
+		compatible = "samsung,s5k5e9";
+		reg = <0x2d>;
+
+		vio-supply = <&vreg_l13a_1p8>;
+		vana-supply = <&ultra_avdd_2p8>;
+		vdig-supply = <&ultra_dvdd_1p2>;
+
+		clocks = <&camcc CAM_CC_MCLK2_CLK>;
+		clock-names = "xvclk";
+		clock-frequency = <19200000>;
+		assigned-clocks = <&camcc CAM_CC_MCLK2_CLK>;
+		assigned-clock-rates = <19200000>;
+
+		reset-gpios = <&tlmm 24 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_s5k5e9_default>;
+
+		orientation = <1>;
+		rotation = <270>;
+
+		lens-focus = <&s5k5e9_vcm>;
+
+		port {
+			cam_s5k5e9_ep: endpoint {
+				data-lanes = <0 1>;
+				link-frequencies = /bits/ 64 <480000000>;
+				remote-endpoint = <&csiphy2_ep>;
+			};
+		};
+	};
+
+	/* OV8856 EEPROM @ 0x54 */
+	/* OV8856 SENSOR @ 0x36 */
+};
+
+&cci1_i2c0 {
+	status = "okay";
+
+	/* GC02M1 EEPROM @ 0x54 */
+	/* GC02M1 @ 0x37 */
+
+	/* OV16A1Q EEPROM @ 0x50 */
+
+	ov16a1q@10 {
+		compatible = "ovti,ov16a1q";
+		reg = <0x10>;
+
+		vio-supply = <&vreg_l13a_1p8>;
+		vana-supply = <&ultra_avdd_2p8>;
+		vdig-supply = <&ultra_dvdd_1p2>;
+
+		clocks = <&camcc CAM_CC_MCLK0_CLK>;
+		clock-names = "xvclk";
+		clock-frequency = <19200000>;
+		assigned-clocks = <&camcc CAM_CC_MCLK0_CLK>;
+		assigned-clock-rates = <19200000>;
+
+		reset-gpios = <&tlmm 32 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_ov16a1q_default>;
+
+		orientation = <0>;
+		rotation = <90>;
+
+		port {
+			cam_ov16a1q_ep: endpoint {
+				data-lanes = <0 1 2 3>;
+				link-frequencies = /bits/ 64 <180000000>;
+				remote-endpoint = <&csiphy3_ep>;
+			};
+		};
+	};
+};
+
+&cci1_i2c1 {
+	status = "disabled";
+};
+
+&tlmm {
+	cam_s5kgm2_default: cam-s5kgm2-default-state {
+		rst-pins {
+			pins = "gpio25";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+
+		mclk1-pins {
+			pins = "gpio14";
+			function = "cam_mclk";
+			drive-strength = <2>;
+			bias-disable;
+		};
+	};
+
+	cam_s5k5e9_default: cam-s5k5e9-default-state {
+		rst-pins {
+			pins = "gpio24";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+
+		mclk2-pins {
+			pins = "gpio15";
+			function = "cam_mclk";
+			drive-strength = <2>;
+			bias-disable;
+		};
+	};
+
+	cam_ov16a1q_default: cam-ov16a1q-default-state {
+		rst-pins {
+			pins = "gpio32";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+
+		mclk0-pins {
+			pins = "gpio13";
+			function = "cam_mclk";
+			drive-strength = <2>;
+			bias-disable;
+		};
+	};
+};
