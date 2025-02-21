@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) 2025 Vitalii Skorkin <nikroksm@mail.ru>
+ */
+
+/dts-v1/;
+
+#include "sm7125-xiaomi-curtana.dtsi"
+
+/ {
+	model = "Xiaomi Redmi Note 9S (Tianma)";
+};
+
+&panel { compatible = "tianma,nt36675"; };
+&touchscreen {
+	compatible = "novatek,nt36xxx-spi";
+	firmware-name = "novatek_ts_tianma_fw.bin";
+};
