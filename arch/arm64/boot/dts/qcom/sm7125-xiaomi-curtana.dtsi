@@ -113,7 +113,14 @@
 	status = "okay";
 
 	/* S5KGM2 EEPROM @ 0x51 */
-	/* S5KGM2 dw9800 VCM @ 0xC */
+
+	s5kgm2_vcm: camera-lens@c {
+		compatible = "dongwoon,dw9800";
+		reg = <0x0c>;
+
+		vin-supply = <&vreg_l13a_1p8>;
+		vdd-supply = <&wide_afvdd_2p8>;
+	};
 
 	s5kgm2@10 {
 		compatible = "samsung,s5kgm2";
@@ -135,6 +142,8 @@
 
 		orientation = <1>;
 		rotation = <270>;
+
+		lens-focus = <&s5kgm2_vcm>;
 
 		port {
 			cam_s5kgm2_ep: endpoint {
