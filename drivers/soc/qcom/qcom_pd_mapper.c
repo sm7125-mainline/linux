@@ -396,6 +396,7 @@ static const struct qcom_pdm_domain_data *sc7180_domains[] = {
 	&adsp_audio_pd,
 	&adsp_root_pd_pdr,
 	&adsp_sensor_pd,
+	&cdsp_root_pd,
 	&mpss_root_pd_gps_pdr,
 	&mpss_wlan_pd,
 	NULL,
