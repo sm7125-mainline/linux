@@ -766,6 +766,36 @@
 		drive-strength = <8>;
 		bias-disable;
 	};
+
+	drv2624_default_state: drv2624-default-state {
+		pins = "gpio52";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-low;
+	};
+
+};
+
+&i2c4 {
+	status = "okay";
+	clock-frequency = <100000>;
+
+	drv2624: haptics@5a {
+		compatible = "ti,drv2624";
+		reg = <0x5a>;
+
+		ti,smart-loop = <1>; /* 0-closeloop, 1-openloop */
+		ti,actuator = <1>; /* 0-ERM, 1-LRA */
+		ti,rated-voltage = <113>;
+		ti,odclamp-voltage = <182>;
+		ti,lra-frequency = <205>; /* DON'T Care if ERM */
+
+		reset-gpios = <&tlmm 52 GPIO_ACTIVE_HIGH>;
+
+		pinctrl-0 = <&drv2624_default_state>;
+		pinctrl-names = "default";
+	};
 };
 
 &i2c9 {
