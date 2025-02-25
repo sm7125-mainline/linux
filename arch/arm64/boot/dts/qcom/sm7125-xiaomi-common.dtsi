@@ -767,14 +767,13 @@
 		bias-disable;
 	};
 
-	drv2624_default_state: drv2624-default-state {
+	haptic_default_state: haptic-default-state {
 		pins = "gpio52";
 		function = "gpio";
 		drive-strength = <2>;
 		bias-disable;
 		output-low;
 	};
-
 };
 
 &i2c4 {
@@ -782,7 +781,7 @@
 	clock-frequency = <100000>;
 
 	drv2624: haptics@5a {
-		compatible = "ti,drv2624";
+		compatible = "awinic,aw8624", "ti,drv2624";
 		reg = <0x5a>;
 
 		ti,smart-loop = <1>; /* 0-closeloop, 1-openloop */
@@ -791,9 +790,28 @@
 		ti,odclamp-voltage = <182>;
 		ti,lra-frequency = <205>; /* DON'T Care if ERM */
 
+		awinic,f0-preset = <2050>;
+		awinic,f0-coefficient = <260>;
+		awinic,f0-calibration-percent = <7>;
+		awinic,drive-level = <100>;
+
+		awinic,f0-detection-play-time = <9>;
+		awinic,f0-detection-wait-time = <3>;
+		awinic,f0-detection-repeat = <1>;
+		awinic,f0-detection-trace = <31>;
+
+		awinic,boost-debug = /bits/ 8 <0x1b 0x1b 0x16>;
+		awinic,tset = /bits/ 8 <0x11>;
+		awinic,r-spare = /bits/ 8 <0x68>;
+
+		awinic,bemf-upper-threshold = <4104>;
+		awinic,bemf-lower-threshold = <9208>;
+
+		interrupts-extended = <&tlmm 26 IRQ_TYPE_EDGE_FALLING>;
+
 		reset-gpios = <&tlmm 52 GPIO_ACTIVE_HIGH>;
 
-		pinctrl-0 = <&drv2624_default_state>;
+		pinctrl-0 = <&haptic_default_state>;
 		pinctrl-names = "default";
 	};
 };
