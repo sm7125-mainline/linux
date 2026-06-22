@@ -638,7 +638,7 @@ static int stmfts_power_on(struct stmfts_data *sdata)
 	 * The datasheet does not specify the power on time, but considering
 	 * that the reset time is < 10ms, I sleep 20ms to be sure
 	 */
-	msleep(20);
+	msleep(500);
 
 	err = i2c_smbus_read_i2c_block_data(sdata->client, FTS_READ_FW_VERSION,
 					    sizeof(reg), reg);
