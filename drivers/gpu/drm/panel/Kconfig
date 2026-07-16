@@ -1043,4 +1043,15 @@ config DRM_PANEL_XINPENG_XPP055C272
 	  Say Y here if you want to enable support for the Xinpeng
 	  XPP055C272 controller for 720x1280 LCD panels with MIPI/RGB/SPI
 	  system interfaces.
+
+config DRM_PANEL_SAMSUNG_S6E3FC3
+	tristate "Samsung S6E3FC3 panel driver"
+	depends on OF
+	depends on DRM_MIPI_DSI
+	depends on BACKLIGHT_CLASS_DEVICE
+	select VIDEOMODE_HELPERS
+	help
+	  Say Y or M here if you want to enable support for the panels built
+	  around the Samsung S6E3FC3 display controller, such as some
+	  panels used in Samsung Galaxy A52 and Galaxy A72 phones.
 endmenu

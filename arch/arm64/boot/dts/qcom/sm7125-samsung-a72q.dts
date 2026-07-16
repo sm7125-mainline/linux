@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * SM7125 Samsung Galaxy A72 (a72q) specific device tree source
+ *
+ * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ */
+
+/dts-v1/;
+
+#include "sm7125-samsung-common.dtsi"
+
+/ {
+	model = "Samsung Galaxy A72";
+	compatible = "samsung,a72q", "qcom,sm7125";
+	qcom,board-id = <0x22 0x5>;
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		rmtfs_mem: memory@f3700000 {
+			compatible = "qcom,rmtfs-mem";
+			reg = <0 0xf3700000 0 0x202000>;
+			qcom,use-guard-pages;
+			no-map;
+
+			qcom,client-id = <1>;
+			qcom,vmid = <QCOM_SCM_VMID_MSS_MSA>;
+		};
+	};
+};
+
+&bluetooth {
+	firmware-name = "sm7125/a72q/apnv11.bin";
+};
+
+&display_panel {
+	compatible = "samsung,s6e3fc3-ams667ym01", "samsung,s6e3fc3";
+	status = "okay";
+};
+
+&gpu_zap_shader {
+	firmware-name = "qcom/sm7125/a72q/a615_zap.mbn";
+};
+
+&ipa {
+	status = "okay";
+	firmware-name = "qcom/sm7125/a72q/ipa_fws.mbn";
+};
+
+&remoteproc_adsp {
+	status = "okay";
+	firmware-name = "qcom/sm7125/a72q/adsp.mbn";
+};
+
+&remoteproc_cdsp {
+	status = "okay";
+	firmware-name = "qcom/sm7125/a72q/cdsp.mbn";
+};
+
+&remoteproc_mpss {
+	status = "okay";
+	firmware-name = "qcom/sm7125/a72q/modem.mbn";
+};
+
+&sound {
+	model = "Galaxy A72";
+};
+
+&venus {
+	firmware-name = "qcom/sm7125/a72q/venus.mbn";
+};
