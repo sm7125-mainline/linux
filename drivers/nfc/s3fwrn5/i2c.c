@@ -11,6 +11,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/delay.h>
 #include <linux/module.h>
+#include <linux/regulator/consumer.h>
 
 #include <net/nfc/nfc.h>
 
@@ -157,6 +158,11 @@ static int s3fwrn5_i2c_probe(struct i2c_client *client)
 
 	phy->i2c_dev = client;
 	i2c_set_clientdata(client, phy);
+
+	ret = devm_regulator_get_enable(&client->dev, "pvdd");
+	if (ret)
+		return dev_err_probe(&client->dev, ret,
+				     "failed to enable pvdd\n");
 
 	phy->common.gpio_en = devm_gpiod_get(&client->dev, "en", GPIOD_OUT_HIGH);
 	if (IS_ERR(phy->common.gpio_en))
