@@ -20,6 +20,9 @@
 				NFC_PROTO_ISO14443_B_MASK | \
 				NFC_PROTO_ISO15693_MASK)
 
+#define S3NRN4V_HWREG_NAME	"samsung/s3nrn4v/hwreg.bin"
+#define S3NRN4V_SWREG_NAME	"samsung/s3nrn4v/swreg.bin"
+
 static int s3fwrn5_firmware_init(struct s3fwrn5_info *info)
 {
 	struct s3fwrn5_fw_info *fw_info = &info->fw_info;
@@ -71,6 +74,22 @@ static int s3fwrn5_firmware_update(struct s3fwrn5_info *info)
 out:
 	s3fwrn5_set_mode(info, S3FWRN5_MODE_COLD);
 	s3fwrn5_fw_cleanup(&info->fw_info);
+	return ret;
+}
+
+static int s3fwrn5_nci_init(struct nci_dev *ndev)
+{
+	struct s3fwrn5_info *info = nci_get_drvdata(ndev);
+	int ret = 0;
+
+	if (info->variant == S3FWRN5_VARIANT_S3NRN4V) {
+		ret = s3fwrn5_nci_clk_cfg(info);
+		if (ret < 0)
+			dev_err(&ndev->nfc_dev->dev,
+				"failed to configure the reference clock: %d\n",
+				ret);
+	}
+
 	return ret;
 }
 
@@ -127,6 +146,15 @@ static int s3fwrn5_nci_post_setup(struct nci_dev *ndev)
 	struct s3fwrn5_info *info = nci_get_drvdata(ndev);
 	int ret;
 
+	if (info->variant == S3FWRN5_VARIANT_S3NRN4V) {
+		ret = s3fwrn5_nci_rf_configure_dual(info, S3NRN4V_HWREG_NAME,
+						    S3NRN4V_SWREG_NAME);
+		if (ret < 0)
+			dev_warn(&ndev->nfc_dev->dev,
+				 "RF calibration data update failed: %d\n", ret);
+		return 0;
+	}
+
 	if (s3fwrn5_firmware_init(info)) {
 		//skip bootloader mode
 		return 0;
@@ -149,6 +177,7 @@ static int s3fwrn5_nci_post_setup(struct nci_dev *ndev)
 }
 
 static const struct nci_ops s3fwrn5_nci_ops = {
+	.init = s3fwrn5_nci_init,
 	.open = s3fwrn5_nci_open,
 	.close = s3fwrn5_nci_close,
 	.send = s3fwrn5_nci_send,
@@ -158,7 +187,7 @@ static const struct nci_ops s3fwrn5_nci_ops = {
 };
 
 int s3fwrn5_probe(struct nci_dev **ndev, void *phy_id, struct device *pdev,
-	const struct s3fwrn5_phy_ops *phy_ops)
+	const struct s3fwrn5_phy_ops *phy_ops, enum s3fwrn5_variant variant)
 {
 	struct s3fwrn5_info *info;
 	int ret;
@@ -170,6 +199,7 @@ int s3fwrn5_probe(struct nci_dev **ndev, void *phy_id, struct device *pdev,
 	info->phy_id = phy_id;
 	info->pdev = pdev;
 	info->phy_ops = phy_ops;
+	info->variant = variant;
 	mutex_init(&info->mutex);
 
 	s3fwrn5_set_mode(info, S3FWRN5_MODE_COLD);
@@ -225,3 +255,5 @@ EXPORT_SYMBOL(s3fwrn5_recv_frame);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Samsung S3FWRN5 NFC driver");
 MODULE_AUTHOR("Robert Baldyga <r.baldyga@samsung.com>");
+MODULE_FIRMWARE(S3NRN4V_HWREG_NAME);
+MODULE_FIRMWARE(S3NRN4V_SWREG_NAME);

@@ -145,6 +145,7 @@ out:
 
 static int s3fwrn5_i2c_probe(struct i2c_client *client)
 {
+	enum s3fwrn5_variant variant;
 	struct s3fwrn5_i2c_phy *phy;
 	int ret;
 
@@ -183,8 +184,9 @@ static int s3fwrn5_i2c_probe(struct i2c_client *client)
 		return dev_err_probe(&client->dev, PTR_ERR(phy->clk),
 				     "failed to get clock\n");
 
+	variant = (uintptr_t)i2c_get_match_data(client);
 	ret = s3fwrn5_probe(&phy->common.ndev, phy, &phy->i2c_dev->dev,
-			    &i2c_phy_ops);
+			    &i2c_phy_ops, variant);
 	if (ret < 0)
 		return ret;
 
@@ -209,13 +211,17 @@ static void s3fwrn5_i2c_remove(struct i2c_client *client)
 }
 
 static const struct i2c_device_id s3fwrn5_i2c_id_table[] = {
-	{ .name = "s3fwrn5_i2c" },
+	{ .name = "s3fwrn5_i2c", .driver_data = S3FWRN5_VARIANT_FWDL },
+	{ .name = "s3nrn4v", .driver_data = S3FWRN5_VARIANT_S3NRN4V },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, s3fwrn5_i2c_id_table);
 
 static const struct of_device_id of_s3fwrn5_i2c_match[] = {
-	{ .compatible = "samsung,s3fwrn5-i2c" },
+	{ .compatible = "samsung,s3fwrn5-i2c",
+	  .data = (void *)S3FWRN5_VARIANT_FWDL },
+	{ .compatible = "samsung,s3nrn4v",
+	  .data = (void *)S3FWRN5_VARIANT_S3NRN4V },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, of_s3fwrn5_i2c_match);

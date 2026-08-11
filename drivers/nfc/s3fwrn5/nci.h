@@ -40,6 +40,9 @@ struct nci_prop_stop_rfreg_rsp {
 
 #define NCI_PROP_FW_CFG		0x28
 
+/* S3NRN4V single-byte FW_CFG payload; 0x11 selects the 19.2 MHz reference. */
+#define NCI_PROP_FW_CFG_CLK_SPEED	0x11
+
 struct nci_prop_fw_cfg_cmd {
 	__u8 clk_type;
 	__u8 clk_speed;
@@ -50,7 +53,25 @@ struct nci_prop_fw_cfg_rsp {
 	__u8 status;
 };
 
-extern const struct nci_driver_ops s3fwrn5_nci_prop_ops[4];
+#define NCI_PROP_DUAL_OPTION		0x2a
+
+#define NCI_PROP_DUAL_SUB_GET_VER	0x00
+#define NCI_PROP_DUAL_SUB_START_UPDATE	0x01
+#define NCI_PROP_DUAL_SUB_SET_OPTION	0x02
+#define NCI_PROP_DUAL_SUB_STOP_UPDATE	0x03
+
+#define NCI_PROP_DUAL_SECTION_SIZE	252
+
+struct nci_prop_dual_set_option_cmd {
+	__u8 sub_oid;
+	__u8 index;
+	__u8 data[NCI_PROP_DUAL_SECTION_SIZE];
+};
+
+extern const struct nci_driver_ops s3fwrn5_nci_prop_ops[5];
 int s3fwrn5_nci_rf_configure(struct s3fwrn5_info *info, const char *fw_name);
+int s3fwrn5_nci_rf_configure_dual(struct s3fwrn5_info *info,
+				  const char *hw_name, const char *sw_name);
+int s3fwrn5_nci_clk_cfg(struct s3fwrn5_info *info);
 
 #endif /* __LOCAL_S3FWRN5_NCI_H_ */
