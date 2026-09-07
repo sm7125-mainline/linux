@@ -468,6 +468,17 @@ config REGULATOR_HI6421V600
 	  HiSilicon Hi6421v600 PMU / Codec IC.
 	  This is used on Kirin 3670 boards, like HiKey 970.
 
+config REGULATOR_ISL98608
+	tristate "Renesas ISL98608 display bias regulator"
+	depends on I2C
+	select REGMAP_I2C
+	help
+	  This driver supports the Renesas ISL98608 LCD bias converter, which
+	  supplies the positive and negative bias rails (AVDD/AVEE) of a display
+	  panel. Its output voltages are I2C registers that reset to the part's
+	  defaults whenever its enable pin is deasserted, so the panel needs
+	  this driver rather than a plain fixed regulator on that pin.
+
 config REGULATOR_ISL9305
 	tristate "Intersil ISL9305 regulator"
 	depends on I2C
