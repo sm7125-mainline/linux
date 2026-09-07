@@ -7,6 +7,9 @@
  * HX83100A support
  * Copyright (C) 2024 Felix Kaechele <felix@kaechele.ca>
  *
+ * HX83102E and SPI transport support
+ * Copyright (C) 2026 Viktor Zaritskyi <viktorzarickiy@gmail.com>
+ *
  * This code is based on "Himax Android Driver Sample Code for QCT platform":
  *
  * Copyright (C) 2017 Himax Corporation.
@@ -22,6 +25,8 @@
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/regmap.h>
+#include <linux/slab.h>
+#include <linux/spi/spi.h>
 
 #define HIMAX_MAX_POINTS		10
 
@@ -41,6 +46,29 @@
 #define HX83100A_REG_FW_EVENT_STACK		0x90060000
 
 #define HIMAX_INVALID_COORD		0xffff
+
+/*
+ * The event stack is larger than one touch frame: raw diagnostic output sits
+ * behind the touch data. Measured on hx83102e, the tail has to be read out
+ * after every frame even when the chip reports no raw data (the point count
+ * byte reads 0xf1, i.e. "none", and there is a tail regardless). Leaving it
+ * makes the following read return that tail -- 56 zero bytes, which pass the
+ * checksum and parse as no fingers, so every other frame looks like the
+ * finger was lifted.
+ */
+#define HIMAX_EVENT_STACK_SIZE		128
+
+/*
+ * On SPI the AHB register access is wrapped in a two byte header: an opcode
+ * followed by the register number. Reads add a dummy byte before the chip
+ * starts shifting data out.
+ */
+#define HIMAX_SPI_CMD_WRITE		0xf2
+#define HIMAX_SPI_CMD_READ		0xf3
+#define HIMAX_SPI_READ_HEADER_LEN	3
+
+/* Enough for the 3 byte read header plus the 56 byte event stack. */
+#define HIMAX_SPI_BUF_SIZE		128
 
 struct himax_event_point {
 	__be16 x;
@@ -64,15 +92,25 @@ struct himax_chip {
 	int (*check_id)(struct himax_ts_data *ts);
 	int (*read_events)(struct himax_ts_data *ts, struct himax_event *event,
 			   size_t length);
+	/* Extra settling time after reset is released, 0 for the default. */
+	unsigned int post_reset_delay_us;
+	/*
+	 * Size of the whole event stack. When it is bigger than a touch
+	 * frame, whatever the chip appended has to be read out as well or the
+	 * next read returns that instead of the next frame. 0 to never drain.
+	 */
+	size_t event_stack_size;
 };
 
 struct himax_ts_data {
 	const struct himax_chip *chip;
 	struct gpio_desc *gpiod_rst;
 	struct input_dev *input_dev;
-	struct i2c_client *client;
+	struct device *dev;
+	int irq;
 	struct regmap *regmap;
 	struct touchscreen_properties props;
+	u8 drain_buf[HIMAX_EVENT_STACK_SIZE];
 };
 
 static const struct regmap_config himax_regmap_config = {
@@ -141,8 +179,13 @@ static void himax_reset(struct himax_ts_data *ts)
 	/*
 	 * The downstream driver doesn't contain this delay but is seems safer
 	 * to include it. The range is just a guess that seems to work well.
+	 * Chips that document a longer power-on time ask for it explicitly:
+	 * hx83102e needs 50 ms before it answers on the bus.
 	 */
-	usleep_range(1000, 1100);
+	if (ts->chip->post_reset_delay_us)
+		fsleep(ts->chip->post_reset_delay_us);
+	else
+		usleep_range(1000, 1100);
 }
 
 static int himax_read_product_id(struct himax_ts_data *ts, u32 *product_id)
@@ -167,12 +210,12 @@ static int himax_check_product_id(struct himax_ts_data *ts)
 	if (error)
 		return error;
 
-	dev_dbg(&ts->client->dev, "Product id: %x\n", product_id);
+	dev_dbg(ts->dev, "Product id: %x\n", product_id);
 
 	if (product_id == ts->chip->id)
 		return 0;
 
-	dev_err(&ts->client->dev, "Unknown product id: %x\n",
+	dev_err(ts->dev, "Unknown product id: %x\n",
 		product_id);
 	return -EINVAL;
 }
@@ -181,9 +224,9 @@ static int himax_input_register(struct himax_ts_data *ts)
 {
 	int error;
 
-	ts->input_dev = devm_input_allocate_device(&ts->client->dev);
+	ts->input_dev = devm_input_allocate_device(ts->dev);
 	if (!ts->input_dev) {
-		dev_err(&ts->client->dev, "Failed to allocate input device\n");
+		dev_err(ts->dev, "Failed to allocate input device\n");
 		return -ENOMEM;
 	}
 
@@ -199,14 +242,14 @@ static int himax_input_register(struct himax_ts_data *ts)
 	error = input_mt_init_slots(ts->input_dev, HIMAX_MAX_POINTS,
 				    INPUT_MT_DIRECT | INPUT_MT_DROP_UNUSED);
 	if (error) {
-		dev_err(&ts->client->dev,
+		dev_err(ts->dev,
 			"Failed to initialize MT slots: %d\n", error);
 		return error;
 	}
 
 	error = input_register_device(ts->input_dev);
 	if (error) {
-		dev_err(&ts->client->dev,
+		dev_err(ts->dev,
 			"Failed to register input device: %d\n", error);
 		return error;
 	}
@@ -268,7 +311,7 @@ static bool himax_verify_checksum(struct himax_ts_data *ts,
 		checksum += data[i];
 
 	if ((checksum & 0x00ff) != 0) {
-		dev_err(&ts->client->dev, "Wrong event checksum: %04x\n",
+		dev_err(ts->dev, "Wrong event checksum: %04x\n",
 			checksum);
 		return false;
 	}
@@ -289,6 +332,23 @@ static int hx83100a_read_events(struct himax_ts_data *ts,
 	return himax_bus_read(ts, HX83100A_REG_FW_EVENT_STACK, event, length);
 };
 
+/*
+ * Read out and discard whatever the chip put behind the touch data. Leaving it
+ * in place makes the next read return that instead of the next frame, which
+ * parses as zero touch points -- the finger appears to be lifted and put back
+ * down on every other interrupt, so a drag never happens.
+ */
+static void himax_drain_event_stack(struct himax_ts_data *ts)
+{
+	size_t length = ts->chip->event_stack_size - sizeof(struct himax_event);
+	int error;
+
+	error = regmap_raw_read(ts->regmap, HIMAX_AHB_ADDR_EVENT_STACK,
+				ts->drain_buf, length);
+	if (error)
+		dev_dbg(ts->dev, "Failed to drain event stack: %d\n", error);
+}
+
 static int himax_handle_input(struct himax_ts_data *ts)
 {
 	int error;
@@ -296,7 +356,7 @@ static int himax_handle_input(struct himax_ts_data *ts)
 
 	error = ts->chip->read_events(ts, &event, sizeof(event));
 	if (error) {
-		dev_err(&ts->client->dev, "Failed to read input event: %d\n",
+		dev_err(ts->dev, "Failed to read input event: %d\n",
 			error);
 		return error;
 	}
@@ -305,8 +365,12 @@ static int himax_handle_input(struct himax_ts_data *ts)
 	 * Only process the current event when it has a valid checksum but
 	 * don't consider it a fatal error when it doesn't.
 	 */
-	if (himax_verify_checksum(ts, &event))
+	if (himax_verify_checksum(ts, &event)) {
 		himax_process_event(ts, &event);
+
+		if (ts->chip->event_stack_size > sizeof(event))
+			himax_drain_event_stack(ts);
+	}
 
 	return 0;
 }
@@ -323,31 +387,24 @@ static irqreturn_t himax_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int himax_probe(struct i2c_client *client)
+static int himax_probe(struct device *dev, struct regmap *regmap, int irq,
+		       const struct himax_chip *chip, const char *name)
 {
-	int error;
-	struct device *dev = &client->dev;
 	struct himax_ts_data *ts;
+	int error;
 
-	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-		dev_err(dev, "I2C check functionality failed\n");
-		return -ENXIO;
-	}
+	if (!chip)
+		return -ENODEV;
 
 	ts = devm_kzalloc(dev, sizeof(*ts), GFP_KERNEL);
 	if (!ts)
 		return -ENOMEM;
 
-	i2c_set_clientdata(client, ts);
-	ts->client = client;
-	ts->chip = i2c_get_match_data(client);
-
-	ts->regmap = devm_regmap_init_i2c(client, &himax_regmap_config);
-	error = PTR_ERR_OR_ZERO(ts->regmap);
-	if (error) {
-		dev_err(dev, "Failed to initialize regmap: %d\n", error);
-		return error;
-	}
+	dev_set_drvdata(dev, ts);
+	ts->dev = dev;
+	ts->irq = irq;
+	ts->chip = chip;
+	ts->regmap = regmap;
 
 	ts->gpiod_rst = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
 	error = PTR_ERR_OR_ZERO(ts->gpiod_rst);
@@ -368,9 +425,8 @@ static int himax_probe(struct i2c_client *client)
 	if (error)
 		return error;
 
-	error = devm_request_threaded_irq(dev, client->irq, NULL,
-					  himax_irq_handler, IRQF_ONESHOT,
-					  client->name, ts);
+	error = devm_request_threaded_irq(dev, irq, NULL, himax_irq_handler,
+					  IRQF_ONESHOT, name, ts);
 	if (error)
 		return error;
 
@@ -381,7 +437,7 @@ static int himax_suspend(struct device *dev)
 {
 	struct himax_ts_data *ts = dev_get_drvdata(dev);
 
-	disable_irq(ts->client->irq);
+	disable_irq(ts->irq);
 	return 0;
 }
 
@@ -389,7 +445,7 @@ static int himax_resume(struct device *dev)
 {
 	struct himax_ts_data *ts = dev_get_drvdata(dev);
 
-	enable_irq(ts->client->irq);
+	enable_irq(ts->irq);
 	return 0;
 }
 
@@ -399,11 +455,43 @@ static const struct himax_chip hx83100a_chip = {
 	.read_events = hx83100a_read_events,
 };
 
+static const struct himax_chip hx83102e_chip = {
+	.id = 0x83102e,
+	.check_id = himax_check_product_id,
+	.read_events = himax_read_events,
+	.post_reset_delay_us = 50000,
+	.event_stack_size = HIMAX_EVENT_STACK_SIZE,
+};
+
 static const struct himax_chip hx83112b_chip = {
 	.id = 0x83112b,
 	.check_id = himax_check_product_id,
 	.read_events = himax_read_events,
 };
+
+#if IS_ENABLED(CONFIG_I2C)
+
+static int himax_i2c_probe(struct i2c_client *client)
+{
+	struct device *dev = &client->dev;
+	struct regmap *regmap;
+	int error;
+
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
+		dev_err(dev, "I2C check functionality failed\n");
+		return -ENXIO;
+	}
+
+	regmap = devm_regmap_init_i2c(client, &himax_regmap_config);
+	error = PTR_ERR_OR_ZERO(regmap);
+	if (error) {
+		dev_err(dev, "Failed to initialize regmap: %d\n", error);
+		return error;
+	}
+
+	return himax_probe(dev, regmap, client->irq,
+			   i2c_get_match_data(client), client->name);
+}
 
 static const struct i2c_device_id himax_ts_id[] = {
 	{ "hx83100a", (kernel_ulong_t)&hx83100a_chip },
@@ -412,25 +500,183 @@ static const struct i2c_device_id himax_ts_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, himax_ts_id);
 
-#ifdef CONFIG_OF
-static const struct of_device_id himax_of_match[] = {
+static const struct of_device_id himax_i2c_of_match[] = {
 	{ .compatible = "himax,hx83100a", .data = &hx83100a_chip },
 	{ .compatible = "himax,hx83112b", .data = &hx83112b_chip },
 	{ /* sentinel */ }
 };
-MODULE_DEVICE_TABLE(of, himax_of_match);
-#endif
+MODULE_DEVICE_TABLE(of, himax_i2c_of_match);
 
-static struct i2c_driver himax_ts_driver = {
-	.probe = himax_probe,
+static struct i2c_driver himax_i2c_driver = {
+	.probe = himax_i2c_probe,
 	.id_table = himax_ts_id,
 	.driver = {
 		.name = "Himax-hx83112b-TS",
-		.of_match_table = of_match_ptr(himax_of_match),
+		.of_match_table = himax_i2c_of_match,
 		.pm = pm_sleep_ptr(&himax_pm_ops),
 	},
 };
-module_i2c_driver(himax_ts_driver);
+
+#endif /* CONFIG_I2C */
+
+#if IS_ENABLED(CONFIG_SPI)
+
+/*
+ * The chip speaks the same AHB register protocol over SPI as it does over
+ * I2C, only wrapped in a small header, so the register layer above is shared
+ * and only the transport differs. The SPI core needs buffers it can DMA from,
+ * which regmap does not promise, so everything goes through a scratch buffer.
+ */
+struct himax_spi_ctx {
+	struct spi_device *spi;
+	u8 *buf;
+};
+
+static int himax_spi_read(void *context, const void *reg_buf, size_t reg_size,
+			  void *val_buf, size_t val_size)
+{
+	struct himax_spi_ctx *ctx = context;
+	struct spi_transfer xfers[2] = { };
+	int error;
+
+	if (reg_size != 1 ||
+	    val_size > HIMAX_SPI_BUF_SIZE - HIMAX_SPI_READ_HEADER_LEN)
+		return -EINVAL;
+
+	ctx->buf[0] = HIMAX_SPI_CMD_READ;
+	ctx->buf[1] = *(const u8 *)reg_buf;
+	ctx->buf[2] = 0x00;
+
+	xfers[0].tx_buf = ctx->buf;
+	xfers[0].len = HIMAX_SPI_READ_HEADER_LEN;
+	xfers[1].rx_buf = ctx->buf + HIMAX_SPI_READ_HEADER_LEN;
+	xfers[1].len = val_size;
+
+	error = spi_sync_transfer(ctx->spi, xfers, ARRAY_SIZE(xfers));
+	if (error)
+		return error;
+
+	memcpy(val_buf, ctx->buf + HIMAX_SPI_READ_HEADER_LEN, val_size);
+	return 0;
+}
+
+static int himax_spi_write(void *context, const void *data, size_t count)
+{
+	struct himax_spi_ctx *ctx = context;
+	struct spi_transfer xfer = { };
+
+	if (count + 1 > HIMAX_SPI_BUF_SIZE)
+		return -EINVAL;
+
+	/* @data is already [register][value...]; the chip wants an opcode. */
+	ctx->buf[0] = HIMAX_SPI_CMD_WRITE;
+	memcpy(ctx->buf + 1, data, count);
+
+	xfer.tx_buf = ctx->buf;
+	xfer.len = count + 1;
+
+	return spi_sync_transfer(ctx->spi, &xfer, 1);
+}
+
+static const struct regmap_bus himax_spi_regmap_bus = {
+	.read = himax_spi_read,
+	.write = himax_spi_write,
+	.reg_format_endian_default = REGMAP_ENDIAN_NATIVE,
+	.val_format_endian_default = REGMAP_ENDIAN_NATIVE,
+};
+
+static int himax_spi_probe(struct spi_device *spi)
+{
+	struct device *dev = &spi->dev;
+	struct himax_spi_ctx *ctx;
+	struct regmap *regmap;
+	int error;
+
+	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
+	if (!ctx)
+		return -ENOMEM;
+
+	ctx->buf = devm_kzalloc(dev, HIMAX_SPI_BUF_SIZE, GFP_KERNEL);
+	if (!ctx->buf)
+		return -ENOMEM;
+
+	ctx->spi = spi;
+
+	spi->bits_per_word = 8;
+	spi->mode = SPI_MODE_3;
+	error = spi_setup(spi);
+	if (error) {
+		dev_err(dev, "Failed to set up SPI: %d\n", error);
+		return error;
+	}
+
+	regmap = devm_regmap_init(dev, &himax_spi_regmap_bus, ctx,
+				  &himax_regmap_config);
+	error = PTR_ERR_OR_ZERO(regmap);
+	if (error) {
+		dev_err(dev, "Failed to initialize regmap: %d\n", error);
+		return error;
+	}
+
+	return himax_probe(dev, regmap, spi->irq,
+			   spi_get_device_match_data(spi), dev_name(dev));
+}
+
+static const struct spi_device_id himax_spi_id[] = {
+	{ "hx83102e", (kernel_ulong_t)&hx83102e_chip },
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(spi, himax_spi_id);
+
+static const struct of_device_id himax_spi_of_match[] = {
+	{ .compatible = "himax,hx83102e", .data = &hx83102e_chip },
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(of, himax_spi_of_match);
+
+static struct spi_driver himax_spi_driver = {
+	.probe = himax_spi_probe,
+	.id_table = himax_spi_id,
+	.driver = {
+		.name = "Himax-hx83102e-TS",
+		.of_match_table = himax_spi_of_match,
+		.pm = pm_sleep_ptr(&himax_pm_ops),
+	},
+};
+
+#endif /* CONFIG_SPI */
+
+static int __init himax_ts_init(void)
+{
+	int error;
+
+	if (IS_ENABLED(CONFIG_I2C)) {
+		error = i2c_add_driver(&himax_i2c_driver);
+		if (error)
+			return error;
+	}
+
+	if (IS_ENABLED(CONFIG_SPI)) {
+		error = spi_register_driver(&himax_spi_driver);
+		if (error) {
+			if (IS_ENABLED(CONFIG_I2C))
+				i2c_del_driver(&himax_i2c_driver);
+			return error;
+		}
+	}
+
+	return 0;
+}
+module_init(himax_ts_init);
+
+static void __exit himax_ts_exit(void)
+{
+	if (IS_ENABLED(CONFIG_SPI))
+		spi_unregister_driver(&himax_spi_driver);
+	if (IS_ENABLED(CONFIG_I2C))
+		i2c_del_driver(&himax_i2c_driver);
+}
+module_exit(himax_ts_exit);
 
 MODULE_AUTHOR("Job Noorman <job@noorman.info>");
 MODULE_DESCRIPTION("Himax hx83112b touchscreen driver");

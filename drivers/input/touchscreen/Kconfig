@@ -1406,10 +1406,13 @@ config TOUCHSCREEN_ZINITIX
 
 config TOUCHSCREEN_HIMAX_HX83112B
 	tristate "Himax hx83112b touchscreen driver"
-	depends on I2C
-	select REGMAP_I2C
+	depends on I2C || SPI
+	select REGMAP
+	select REGMAP_I2C if I2C
 	help
-	  Say Y here to enable support for Himax hx83112b touchscreens.
+	  Say Y here to enable support for Himax hx83100a, hx83102e and
+	  hx83112b touchscreens. The hx83102e is attached over SPI, the
+	  others over I2C.
 
 	  If unsure, say N.
 
