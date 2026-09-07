@@ -16,6 +16,15 @@
 
 #define DRIVER_NAME		"sm8250"
 #define MI2S_BCLK_RATE		1536000
+/*
+ * That bit clock carries two 16-bit slots per frame at 48 kHz. Say so to the
+ * codecs rather than leaving them to assume it: a tas2562 comes out of reset
+ * expecting 32-bit slots, so it looks for its second slot past the end of the
+ * frame and that channel stays silent -- while the mixer, the DAPM widgets and
+ * the codec's own registers all look perfectly correct.
+ */
+#define MI2S_SLOTS		2
+#define MI2S_SLOT_WIDTH		16
 
 struct sm8250_snd_data {
 	bool stream_prepared[AFE_PORT_MAX];
@@ -46,13 +55,30 @@ static int sm8250_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
+/*
+ * Configure every codec on the link, not just the first: an MI2S link can carry
+ * more than one, such as a stereo pair of speaker amplifiers. Codecs with no
+ * .set_tdm_slot answer -ENOTSUPP, which is not an error here.
+ */
+static void sm8250_snd_mi2s_codec_setup(struct snd_soc_pcm_runtime *rtd,
+					unsigned int codec_dai_fmt)
+{
+	struct snd_soc_dai *codec_dai;
+	int i;
+
+	for_each_rtd_codec_dais(rtd, i, codec_dai) {
+		snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
+		snd_soc_dai_set_tdm_slot(codec_dai, 0x3, 0x3,
+					 MI2S_SLOTS, MI2S_SLOT_WIDTH);
+	}
+}
+
 static int sm8250_snd_startup(struct snd_pcm_substream *substream)
 {
 	unsigned int fmt = SND_SOC_DAIFMT_BP_FP;
 	unsigned int codec_dai_fmt = SND_SOC_DAIFMT_BC_FC;
 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
-	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
 
 	switch (cpu_dai->id) {
 	case PRIMARY_MI2S_RX:
@@ -61,7 +87,7 @@ static int sm8250_snd_startup(struct snd_pcm_substream *substream)
 			Q6AFE_LPASS_CLK_ID_PRI_MI2S_IBIT,
 			MI2S_BCLK_RATE, SNDRV_PCM_STREAM_PLAYBACK);
 		snd_soc_dai_set_fmt(cpu_dai, fmt);
-		snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
+		sm8250_snd_mi2s_codec_setup(rtd, codec_dai_fmt);
 		break;
 	case SECONDARY_MI2S_RX:
 		codec_dai_fmt |= SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_I2S;
@@ -69,7 +95,7 @@ static int sm8250_snd_startup(struct snd_pcm_substream *substream)
 			Q6AFE_LPASS_CLK_ID_SEC_MI2S_IBIT,
 			MI2S_BCLK_RATE, SNDRV_PCM_STREAM_PLAYBACK);
 		snd_soc_dai_set_fmt(cpu_dai, fmt);
-		snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
+		sm8250_snd_mi2s_codec_setup(rtd, codec_dai_fmt);
 		break;
 	case TERTIARY_MI2S_RX:
 		codec_dai_fmt |= SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_I2S;
@@ -77,7 +103,7 @@ static int sm8250_snd_startup(struct snd_pcm_substream *substream)
 			Q6AFE_LPASS_CLK_ID_TER_MI2S_IBIT,
 			MI2S_BCLK_RATE, SNDRV_PCM_STREAM_PLAYBACK);
 		snd_soc_dai_set_fmt(cpu_dai, fmt);
-		snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
+		sm8250_snd_mi2s_codec_setup(rtd, codec_dai_fmt);
 		break;
 	case QUATERNARY_MI2S_RX:
 		codec_dai_fmt |= SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_I2S;
@@ -85,7 +111,7 @@ static int sm8250_snd_startup(struct snd_pcm_substream *substream)
 			Q6AFE_LPASS_CLK_ID_QUAD_MI2S_IBIT,
 			MI2S_BCLK_RATE, SNDRV_PCM_STREAM_PLAYBACK);
 		snd_soc_dai_set_fmt(cpu_dai, fmt);
-		snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
+		sm8250_snd_mi2s_codec_setup(rtd, codec_dai_fmt);
 		break;
 	case QUINARY_MI2S_RX:
 		codec_dai_fmt |= SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_I2S;
@@ -93,7 +119,7 @@ static int sm8250_snd_startup(struct snd_pcm_substream *substream)
 			Q6AFE_LPASS_CLK_ID_QUI_MI2S_IBIT,
 			MI2S_BCLK_RATE, SNDRV_PCM_STREAM_PLAYBACK);
 		snd_soc_dai_set_fmt(cpu_dai, fmt);
-		snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
+		sm8250_snd_mi2s_codec_setup(rtd, codec_dai_fmt);
 		break;
 	default:
 		break;
