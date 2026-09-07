@@ -5,17 +5,44 @@
 
 /dts-v1/;
 
+#include <dt-bindings/firmware/qcom,scm.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+
 #include "sm7125-samsung-common.dtsi"
 
 / {
 	model = "Samsung Galaxy Tab S6 Lite (2022)";
 	compatible = "samsung,gta4xlve", "qcom,sm7125";
-	qcom,board-id = <0x22 0x5>;
+
+	chassis-type = "tablet";
+
+	/* must match the stock bootloader's DTB selection ids */
+	qcom,board-id = <0x22 0x0>;
+
+	chosen {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		framebuffer: framebuffer@9c000000 {
+			compatible = "simple-framebuffer";
+			reg = <0x0 0x9c000000 0x0 0x1700000>;
+			width = <1200>;
+			height = <2000>;
+			stride = <(1200 * 4)>;
+			format = "a8r8g8b8";
+		};
+	};
 
 	reserved-memory {
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
+
+		cont_splash_mem: cont-splash@9c000000 {
+			reg = <0x0 0x9c000000 0x0 0x1700000>;
+			no-map;
+		};
 
 		rmtfs_mem: memory@f3700000 {
 			compatible = "qcom,rmtfs-mem";
@@ -24,22 +51,100 @@
 			no-map;
 
 			qcom,client-id = <1>;
+			/*
+			 * Without this the region is never handed to the modem
+			 * through SCM, and its first write there faults in
+			 * TrustZone and resets the device.
+			 */
 			qcom,vmid = <QCOM_SCM_VMID_MSS_MSA>;
 		};
 	};
 };
 
 &bluetooth {
-	firmware-name = "sm7125/gta4xlve/apnv11.bin";
+	/*
+	 * Not the wcn3988 inherited from a72q: this tablet carries a WCN3991.
+	 * The running stock firmware reports BTFM.CHE.3.2.0 and loads
+	 * qca/crbtfw32.tlv, and /vendor/firmware ships crnv32u.bin -- the "u"
+	 * NVM variant btqca only picks for the WCN3991 soc id. With the wrong
+	 * compatible the driver looks for apbtfw32.tlv, which does not exist.
+	 */
+	compatible = "qcom,wcn3991-bt";
+
+	/*
+	 * This tablet's own address, read from /efs/bluetooth/bt_addr
+	 * (1c:f8:d0:37:91:4a), stored little-endian as the binding wants.
+	 * a72q's common dtsi carries what is really the QCA firmware default,
+	 * so writing it back is a no-op and the controller stays unconfigured:
+	 * it comes UP at the HCI level but never appears in the management
+	 * index list, and bluetoothd reports "No default controller".
+	 */
+	local-bd-address = [4a 91 37 d0 f8 1c];
+};
+
+&{/gpio-keys} {
+	/*
+	 * This tablet has two hall sensors and the one inherited from a72q is
+	 * the wrong one. Downstream splits them: "hall" (event 0x0 = SW_LID) is
+	 * the book cover on TLMM 93, while "hall_wacom" on pm6150_gpios 10
+	 * senses the magnetically attached S Pen. Reporting the pen sensor as
+	 * SW_LID leaves the lid permanently "closed", so elogind suspends the
+	 * tablet ~30 s after every resume and USB drops with it.
+	 */
+	pinctrl-0 = <&key_vol_up_default>, <&hall_cover_default>;
+};
+
+&{/gpio-keys/event-hall-sensor} {
+	gpios = <&tlmm 93 GPIO_ACTIVE_LOW>;
 };
 
 &display_panel {
-	compatible = "tianma,fhd-video";
+	compatible = "boe,tv104wum";
+
+	pp1800-supply = <&vreg_l13a_1p8>;
+	avdd-supply = <&lcd_bias_vp>;
+	avee-supply = <&lcd_bias_vn>;
+
+	enable-gpios = <&tlmm 8 GPIO_ACTIVE_HIGH>;
+
 	status = "okay";
 };
 
 &gpu_zap_shader {
 	firmware-name = "qcom/sm7125/gta4xlve/a615_zap.mbn";
+};
+
+&i2c2 {
+	status = "okay";
+
+	/*
+	 * LCD bias converter. Its AVDD/AVEE outputs are register values that
+	 * reset to the part's defaults whenever its enable pin drops, so the
+	 * panel cannot just switch a fixed regulator on this pin -- the rails
+	 * have to be programmed. Downstream writes 0x08 (+/-5.5 V) to VBST, VP
+	 * and VN on every panel power-on; mainline never did, which left the
+	 * panel running out of spec.
+	 */
+	lcd_bias: regulator@29 {
+		compatible = "isil,isl98608";
+		reg = <0x29>;
+
+		enable-gpios = <&tlmm 55 GPIO_ACTIVE_HIGH>;
+
+		regulators {
+			lcd_bias_vp: vp {
+				regulator-name = "lcd_avdd";
+				regulator-min-microvolt = <5500000>;
+				regulator-max-microvolt = <5500000>;
+			};
+
+			lcd_bias_vn: vn {
+				regulator-name = "lcd_avee";
+				regulator-min-microvolt = <5500000>;
+				regulator-max-microvolt = <5500000>;
+			};
+		};
+	};
 };
 
 &ipa {
@@ -57,6 +162,134 @@
 	firmware-name = "qcom/sm7125/gta4xlve/cdsp.mbn";
 };
 
+/*
+ * This tablet has no cellular modem, but the WCN3990 WLAN firmware runs on the
+ * modem subsystem, so it has to be brought up for Wi-Fi to work at all.
+ */
+&remoteproc_mpss {
+	status = "okay";
+	firmware-name = "qcom/sm7125/gta4xlve/modem.mbn";
+};
+
 &sound {
 	model = "Galaxy Tab S6 Lite";
+};
+
+/*
+ * a72q carries an STMicro touchscreen on i2c7; this tablet has none there.
+ * Its controller is a Himax hx83102e on SPI, described below.
+ */
+/delete-node/ &tsp_stm;
+
+/*
+ * a72q puts the speaker amplifiers on a bit-banged bus on TLMM 88/89. On this
+ * tablet those pins carry a grip sensor (isg6320, no mainline driver) and the
+ * amplifiers sit on the real QUP0 SE0 controller: fragment@105 of the stock
+ * DTBO targets &qupv3_se0_i2c, which is i2c@880000 on gpio34/gpio35. Scanning
+ * the bit-banged bus found only the grip sensor at 0x28 and nothing at all at
+ * 0x4c/0x4d, which is why every amplifier register access returned -ENXIO.
+ */
+/delete-node/ &i2c_18;
+
+/ {
+	aliases {
+		/delete-property/ i2c18;
+	};
+};
+
+&i2c0 {
+	status = "okay";
+
+	/* Both amplifiers are released by the same line, ti,reset-gpio downstream. */
+	speaker_right: codec@4c {
+		compatible = "ti,tas2562";
+		reg = <0x4c>;
+		#sound-dai-cells = <0>;
+		shutdown-gpios = <&tlmm 94 GPIO_ACTIVE_HIGH>;
+		sound-name-prefix = "Right";
+		ti,imon-slot-no = <0>;
+		ti,vmon-slot-no = <1>;
+	};
+
+	speaker_left: codec@4d {
+		compatible = "ti,tas2562";
+		reg = <0x4d>;
+		#sound-dai-cells = <0>;
+		shutdown-gpios = <&tlmm 94 GPIO_ACTIVE_HIGH>;
+		sound-name-prefix = "Left";
+		ti,imon-slot-no = <0>;
+		ti,vmon-slot-no = <1>;
+	};
+};
+
+&sound {
+	i2s-dai-link {
+		codec {
+			sound-dai = <&speaker_right>, <&speaker_left>;
+		};
+	};
+};
+
+/*
+ * a72q drives the amplifiers on SD0. Here the stock DTBO says
+ * qcom,msm-mi2s-rx-lines = <0x02>, i.e. BIT(1) -- playback goes out on SD1,
+ * while SD0 carries the amplifiers' current/voltage sense back in.
+ */
+&q6afedai {
+	dai@127 {
+		qcom,sd-lines = <1>;
+	};
+};
+
+&spi6 {
+	/*
+	 * The controller wants chip select held low across the two transfers
+	 * of a read, so drive it from a GPIO rather than the GENI hardware
+	 * chip select, which is what the vendor driver does as well.
+	 */
+	pinctrl-0 = <&qup_spi6_spi>, <&qup_spi6_cs_gpio>;
+	cs-gpios = <&tlmm 62 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	touchscreen@0 {
+		compatible = "himax,hx83102e";
+		reg = <0>;
+		spi-max-frequency = <7000000>;
+
+		/* The vendor driver fixes this chip to edge trigger (SEC_FIX_INT_EDGE). */
+		interrupts-extended = <&tlmm 9 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 32 GPIO_ACTIVE_LOW>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&tsp_int_default>;
+
+		touchscreen-size-x = <1200>;
+		touchscreen-size-y = <2000>;
+	};
+};
+
+&tlmm {
+	/*
+	 * a72q reserves gpio59-62; on this tablet they are the touchscreen's
+	 * SPI bus and nothing else claims them, downstream included.
+	 */
+	/delete-property/ gpio-reserved-ranges;
+
+	hall_cover_default: hall-cover-default-state {
+		pins = "gpio93";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	tsp_int_default: tsp-int-default-state {
+		pins = "gpio9";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+};
+
+&venus {
+	firmware-name = "qcom/sm7125/gta4xlve/venus.mbn";
 };
