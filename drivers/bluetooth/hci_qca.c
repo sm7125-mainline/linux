@@ -239,6 +239,13 @@ static int qca_power_off(struct hci_dev *hdev);
 static void qca_controller_memdump(struct work_struct *work);
 static void qca_dmp_hdr(struct hci_dev *hdev, struct sk_buff *skb);
 
+static bool ibs_host_sleep = true;
+module_param(ibs_host_sleep, bool, 0644);
+MODULE_PARM_DESC(ibs_host_sleep,
+		 "Allow the host to put the controller to sleep over IBS (default true). "
+		 "On boards whose controller never answers the wake-up that follows, "
+		 "clear this to keep it awake instead.");
+
 static enum qca_btsoc_type qca_soc_type(struct hci_uart *hu)
 {
 	enum qca_btsoc_type soc_type;
@@ -482,6 +489,11 @@ static void hci_ibs_tx_idle_timeout(struct timer_list *t)
 
 	spin_lock_irqsave_nested(&qca->hci_ibs_lock,
 				 flags, SINGLE_DEPTH_NESTING);
+
+	if (!ibs_host_sleep) {
+		spin_unlock_irqrestore(&qca->hci_ibs_lock, flags);
+		return;
+	}
 
 	switch (qca->tx_ibs_state) {
 	case HCI_IBS_TX_AWAKE:
@@ -1035,7 +1047,7 @@ static void qca_controller_memdump(struct work_struct *work)
 	struct hci_uart *hu = qca->hu;
 	struct sk_buff *skb;
 	struct qca_memdump_event_hdr *cmd_hdr;
-	struct qca_memdump_info *qca_memdump = qca->qca_memdump;
+	struct qca_memdump_info *qca_memdump;
 	struct qca_dump_size *dump;
 	u16 seq_no;
 	u32 rx_size;
@@ -1045,6 +1057,16 @@ static void qca_controller_memdump(struct work_struct *work)
 	while ((skb = skb_dequeue(&qca->rx_memdump_q))) {
 
 		mutex_lock(&qca->hci_memdump_lock);
+
+		/* Re-read this on every iteration. Completing a dump frees
+		 * the buffer and clears qca->qca_memdump, but a cached copy
+		 * would stay behind and be written through on the next pass,
+		 * which happens whenever the packets of the following dump
+		 * are already queued -- as they are when the controller
+		 * crashes repeatedly.
+		 */
+		qca_memdump = qca->qca_memdump;
+
 		/* Skip processing the received packets if timeout detected
 		 * or memdump collection completed.
 		 */
@@ -1084,6 +1106,7 @@ static void qca_controller_memdump(struct work_struct *work)
 			if (!(qca_memdump->ram_dump_size)) {
 				bt_dev_err(hu->hdev, "Rx invalid memdump size");
 				kfree(qca_memdump);
+				qca->qca_memdump = NULL;
 				kfree_skb(skb);
 				mutex_unlock(&qca->hci_memdump_lock);
 				return;
@@ -1120,6 +1143,7 @@ static void qca_controller_memdump(struct work_struct *work)
 		if (!test_bit(QCA_MEMDUMP_COLLECTION, &qca->flags)) {
 			bt_dev_err(hu->hdev, "QCA: Discarding other packets");
 			kfree(qca_memdump);
+			qca->qca_memdump = NULL;
 			kfree_skb(skb);
 			mutex_unlock(&qca->hci_memdump_lock);
 			return;
@@ -1880,6 +1904,7 @@ static int qca_setup(struct hci_uart *hu)
 	struct qca_btsoc_version ver;
 	struct qca_serdev *qcadev;
 	const char *soc_name;
+	unsigned long ibs_flags;
 
 	ret = qca_check_speeds(hu);
 	if (ret)
@@ -1905,6 +1930,26 @@ static int qca_setup(struct hci_uart *hu)
 	case QCA_WCN3991:
 	case QCA_WCN3998:
 		soc_name = "wcn399x";
+		/*
+		 * These claim extended advertising in their LE features but
+		 * answer HCI_OP_LE_READ_NUM_SUPPORTED_ADV_SETS with Command
+		 * Disallowed, which aborts initialisation and leaves the
+		 * controller down. They likewise claim the extended scanning
+		 * commands and then never answer LE Set Extended Scan
+		 * Parameters at all, so discovery times out.
+		 */
+		set_bit(HCI_QUIRK_BROKEN_EXT_ADV, &hdev->quirks);
+		set_bit(HCI_QUIRK_BROKEN_EXT_SCAN, &hdev->quirks);
+		/*
+		 * They advertise LE Extended Create Connection in their
+		 * supported commands as well, and answer it with Command
+		 * Disallowed, so no LE connection is ever established: every
+		 * attempt comes back as MGMT_STATUS_BUSY once the 0x0c reply
+		 * has been through -EBUSY and back. This is a separate quirk
+		 * from HCI_QUIRK_BROKEN_EXT_ADV -- use_ext_conn() does not
+		 * consult ext_adv_capable().
+		 */
+		set_bit(HCI_QUIRK_BROKEN_EXT_CREATE_CONN, &hdev->quirks);
 		break;
 
 	case QCA_WCN6750:
@@ -1989,6 +2034,21 @@ retry:
 	ret = qca_uart_setup(hdev, qca_baudrate, soc_type, ver,
 			firmware_name, rampatch_name);
 	if (!ret) {
+		/* A controller reset runs setup again but never runs
+		 * qca_open() again, so the IBS state machine can still be
+		 * sitting in HCI_IBS_TX_WAKING from the failure that caused
+		 * the reset -- with no retransmit timer left to carry it out
+		 * of that state. Every later packet would then queue behind a
+		 * wake-up that is never sent again, and the controller would
+		 * look dead until the next reboot.
+		 */
+		del_timer_sync(&qca->wake_retrans_timer);
+		del_timer_sync(&qca->tx_idle_timer);
+		spin_lock_irqsave(&qca->hci_ibs_lock, ibs_flags);
+		qca->tx_ibs_state = HCI_IBS_TX_ASLEEP;
+		qca->rx_ibs_state = HCI_IBS_RX_ASLEEP;
+		spin_unlock_irqrestore(&qca->hci_ibs_lock, ibs_flags);
+
 		clear_bit(QCA_IBS_DISABLED, &qca->flags);
 		qca_debugfs_init(hdev);
 		hu->hdev->hw_error = qca_hw_error;
@@ -2422,8 +2482,28 @@ static int qca_serdev_probe(struct serdev_device *serdev)
 			return PTR_ERR(qcadev->bt_en);
 		}
 
-		if (!qcadev->bt_en)
-			power_ctrl_enabled = false;
+		switch (data->soc_type) {
+		case QCA_WCN3950:
+		case QCA_WCN3988:
+		case QCA_WCN3990:
+		case QCA_WCN3991:
+		case QCA_WCN3998:
+			/*
+			 * These need no BT_EN: the chip is powered by the
+			 * regulators acquired above and driven into and out of
+			 * boot mode with UART power pulses, so it can still be
+			 * power cycled between opens. Boards without the gpio
+			 * would otherwise lose HCI_QUIRK_NON_PERSISTENT_SETUP
+			 * and never get their firmware downloaded a second
+			 * time, leaving the controller unresponsive after the
+			 * first close.
+			 */
+			break;
+		default:
+			if (!qcadev->bt_en)
+				power_ctrl_enabled = false;
+			break;
+		}
 
 		qcadev->sw_ctrl = devm_gpiod_get_optional(&serdev->dev, "swctrl",
 					       GPIOD_IN);
@@ -2633,6 +2713,9 @@ static int __maybe_unused qca_suspend(struct device *dev)
 		fallthrough;
 	case HCI_IBS_TX_AWAKE:
 		del_timer(&qca->tx_idle_timer);
+
+		if (!ibs_host_sleep)
+			break;
 
 		serdev_device_write_flush(hu->serdev);
 		cmd = HCI_IBS_SLEEP_IND;

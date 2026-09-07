@@ -1944,7 +1944,8 @@ void hci_conn_del_sysfs(struct hci_conn *conn);
 #define use_ext_conn(dev) (((dev)->commands[37] & 0x80) && \
 	!test_bit(HCI_QUIRK_BROKEN_EXT_CREATE_CONN, &(dev)->quirks))
 /* Extended advertising support */
-#define ext_adv_capable(dev) (((dev)->le_features[1] & HCI_LE_EXT_ADV))
+#define ext_adv_capable(dev) (((dev)->le_features[1] & HCI_LE_EXT_ADV) && \
+	!test_bit(HCI_QUIRK_BROKEN_EXT_ADV, &(dev)->quirks))
 
 /* Maximum advertising length */
 #define max_adv_len(dev) \
