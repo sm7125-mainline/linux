@@ -934,8 +934,6 @@
 	bluetooth: bluetooth {
 		compatible = "qcom,wcn3988-bt";
 
-		local-bd-address = [ 22 00 00 00 5a ad ];
-
 		vddio-supply = <&vreg_l10a_1p8>;
 		vddxo-supply = <&vreg_l1c_1p8>;
 		vddrf-supply = <&vreg_l2c_1p3>;

@@ -31,10 +31,6 @@
 	};
 };
 
-&bluetooth {
-	firmware-name = "sm7125/a52q/apnv11.bin";
-};
-
 &display_panel {
 	compatible = "samsung,s6e3fc3-ams646yd04", "samsung,s6e3fc3";
 	status = "okay";
