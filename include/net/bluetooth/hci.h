@@ -285,6 +285,18 @@ enum {
 	HCI_QUIRK_BROKEN_EXT_SCAN,
 
 	/*
+	 * When this quirk is set, extended advertising is treated as
+	 * unsupported. This is required for controllers which set the
+	 * extended advertising bit in their LE features but then answer
+	 * HCI_OP_LE_READ_NUM_SUPPORTED_ADV_SETS with Command Disallowed,
+	 * which otherwise fails initialisation and leaves the device down.
+	 *
+	 * This quirk can be set before hci_register_dev is called or
+	 * during the hdev->setup vendor callback.
+	 */
+	HCI_QUIRK_BROKEN_EXT_ADV,
+
+	/*
 	 * When this quirk is set, the HCI_OP_GET_MWS_TRANSPORT_CONFIG command is
 	 * disabled. This is required for some Broadcom controllers which
 	 * erroneously claim to support MWS Transport Layer Configuration.
