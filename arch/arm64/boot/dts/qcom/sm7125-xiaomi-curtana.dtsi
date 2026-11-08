@@ -9,7 +9,6 @@
 #include "sm7125-xiaomi-common.dtsi"
 
 / {
-	compatible = "xiaomi,miatoll", "xiaomi,curtana", "qcom,sm7125";
 	/* required for bootloader to select correct board */
 	qcom,board-id = <0x20022 1>;
 

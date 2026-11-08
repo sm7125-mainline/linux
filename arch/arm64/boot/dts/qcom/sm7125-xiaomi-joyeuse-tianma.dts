@@ -9,6 +9,7 @@
 #include "sm7125-xiaomi-joyeuse.dtsi"
 
 / {
+	compatible = "xiaomi,joyeuse-tianma", "xiaomi,joyeuse", "qcom,sm7125";
 	model = "Xiaomi Redmi Note 9 Pro (Global, Tianma)";
 };
 

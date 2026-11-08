@@ -8,6 +8,7 @@
 #include "sm7125-xiaomi-curtana.dtsi"
 
 / {
+	compatible = "xiaomi,curtana-tianma", "xiaomi,curtana", "qcom,sm7125";
 	model = "Xiaomi Redmi Note 9S (Tianma)";
 };
 
