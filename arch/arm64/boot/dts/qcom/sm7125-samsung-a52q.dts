@@ -25,6 +25,34 @@
 	firmware-name = "qcom/sm7125/a52q/a615_zap.mbn";
 };
 
+&ipa {
+	firmware-name = "qcom/sm7125/a52q/ipa_fws.mbn";
+
+	status = "okay";
+};
+
+&remoteproc_adsp {
+	firmware-name = "qcom/sm7125/a52q/adsp.mbn";
+
+	status = "okay";
+};
+
+&remoteproc_cdsp {
+	firmware-name = "qcom/sm7125/a52q/cdsp.mbn";
+
+	status = "okay";
+};
+
+&remoteproc_mpss {
+	firmware-name = "qcom/sm7125/a52q/modem.mbn";
+
+	status = "okay";
+};
+
 &rmtfs_mem {
 	reg = <0x0 0xf4f00000 0x0 0x202000>;
+};
+
+&venus {
+	firmware-name = "qcom/sm7125/a52q/venus.mbn";
 };
