@@ -15,6 +15,16 @@
 	qcom,board-id = <0x22 0x6>;
 };
 
+&display_panel {
+	compatible = "samsung,s6e3fc3-ams646yd04", "samsung,s6e3fc3";
+
+	status = "okay";
+};
+
+&gpu_zap_shader {
+	firmware-name = "qcom/sm7125/a52q/a615_zap.mbn";
+};
+
 &rmtfs_mem {
 	reg = <0x0 0xf4f00000 0x0 0x202000>;
 };
