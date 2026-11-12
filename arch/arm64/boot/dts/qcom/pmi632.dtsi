@@ -163,9 +163,42 @@
 			status = "disabled";
 		};
 
+		pmi632_qgauge: fuel-gauge@4800 {
+			compatible = "qcom,pmi632-qg";
+
+			reg = <0x4800>;
+
+			interrupts = <0x2 0x48 0x0 IRQ_TYPE_EDGE_BOTH>,
+				     <0x2 0x48 0x1 IRQ_TYPE_EDGE_BOTH>,
+				     <0x2 0x48 0x2 IRQ_TYPE_EDGE_RISING>,
+				     <0x2 0x48 0x3 IRQ_TYPE_EDGE_RISING>,
+				     <0x2 0x48 0x4 IRQ_TYPE_EDGE_RISING>,
+				     <0x2 0x48 0x5 IRQ_TYPE_EDGE_RISING>,
+				     <0x2 0x48 0x6 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "batt-missing",
+					  "vbat-low",
+					  "vbat-empty",
+					  "fifo-done",
+					  "good-ocv",
+					  "fsm-state-chg",
+					  "event";
+
+			nvmem = <&pmi632_sdam_2>;
+
+			status = "disabled";
+		};
+
 		pmi632_pbs_client3: pbs@7400 {
 			compatible = "qcom,pmi632-pbs", "qcom,pbs";
 			reg = <0x7400>;
+		};
+
+		pmi632_sdam_2: nvram@b100 {
+			compatible = "qcom,spmi-sdam";
+			reg = <0xb100>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges = <0 0xb100 0x100>;
 		};
 
 		pmi632_sdam_7: nvram@b600 {
