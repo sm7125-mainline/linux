@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/panel/samsung,s6e3fc3.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Samsung S6E3FC3 AMOLED DSI panel
+
+description: The S6E3FC3 is a 1080x2400 DPI display panel from Samsung Mobile
+  Displays (SMD).
+
+maintainers:
+  - Erikas Bitovtas <xerikasxx@gmail.com>
+
+allOf:
+  - $ref: panel-common.yaml#
+
+properties:
+  compatible:
+    const: samsung,s6e3fc3-ams646yd04
+    const: samsung,s6e3fc3-ams667ym01
+
+  reg:
+    maxItems: 1
+
+  vddio-supply:
+    description: VDDIO regulator
+
+  vci-supply:
+    description: VCI regulator
+
+  reset-gpios: true
+
+required:
+  - compatible
+  - reset-gpios
+  - vddio-supply
+  - vci-supply
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+
+    dsi {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        panel@0 {
+          compatible = "samsung,s6e3fc3-ams664ym01", "samsung,s6e3fc3"
+          reg = <0>;
+
+          pinctrl-names = "default", "sleep";
+          pinctrl-0 = <&mdss_dsi_active>, <&mdss_te_active>;
+          pinctrl-1 = <&mdss_dsi_suspend>, <&mdss_te_suspend>;
+
+          vddio-supply = <&vreg_l13a_1p8>;
+          vci-supply = <&vreg_l18a_3p0>;
+
+          reset-gpios = <&tlmm 8 GPIO_ACTIVE_LOW>;
+
+          status = "okay";
+
+          port {
+            panel_in: endpoint {
+            remote-endpoint = <&mdss_dsi0_out>;
+          };
+        };
+      };
+    };
+
+...
+
