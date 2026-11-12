@@ -359,6 +359,14 @@
 	};
 };
 
+&gpi_dma0 {
+	status = "okay";
+};
+
+&gpi_dma1 {
+	status = "okay";
+};
+
 &gpu {
 	status = "okay";
 };
@@ -366,6 +374,24 @@
 &ipa {
 	memory-region = <&ipa_fw_mem>;
 };
+
+&i2c7 {
+	status = "okay";
+
+	clock-frequency = <400000>;
+
+	touchscreen@49 {
+		compatible = "st,stmfts_fts5cu56a";
+		reg = <0x49>;
+
+		interrupts-extended = <&tlmm 9 IRQ_TYPE_LEVEL_LOW>;
+
+		vdd-supply = <&vreg_l10a_1p8>;
+		avdd-supply = <&vreg_l7c_3p0>;
+
+		pinctrl-0 = <&ts_int_default>;
+		pinctrl-names = "default";
+	};
 
 &mdss {
 	status = "okay";
@@ -451,6 +477,19 @@
 	vcc-supply = <&vreg_l11a_1p8>;
 };
 
+&qup_i2c7_default {
+	drive-strength = <2>;
+	bias-disable;
+};
+
+&qupv3_id_0 {
+	status = "okay";
+};
+
+&qupv3_id_1 {
+	status = "okay";
+};
+
 &remoteproc_adsp {
 	memory-region = <&adsp_mem>;
 };
@@ -481,6 +520,13 @@
 		function = "gpio";
 		drive-strength = <2>;
 		bias-pull-down;
+	};
+
+	ts_int_default: ts-int-default-state {
+		pins = "gpio9";
+		function = "gpio";
+		input-enable;
+		bias-disable;
 	};
 
 	mdss_te_active: mdss-te-active-state {
