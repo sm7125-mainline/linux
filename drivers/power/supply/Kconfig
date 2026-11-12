@@ -228,6 +228,19 @@ config BATTERY_QCOM_BATTMGR
 	  which is used on modern Qualcomm platforms to provide battery and
 	  power supply information.
 
+config BATTERY_QCOM_QG
+	tristate "Qualcomm QGauge fuel gauge support"
+	depends on MFD_SPMI_PMIC || COMPILE_TEST
+	depends on IIO
+	help
+	  Say Y to add support for the QGauge (QG) fuel gauge block found
+	  in Qualcomm PMICs such as PMI632 and PM6150. This hardware provides
+	  battery voltage and current FIFO sampling, open circuit voltage
+	  (OCV) measurement, and coulomb counting for battery state estimation.
+
+	  To compile this driver as module, choose M here: the
+	  module will be called qcom_qg.
+
 config BATTERY_OLPC
 	tristate "One Laptop Per Child battery"
 	depends on OLPC_EC
