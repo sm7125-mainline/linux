@@ -23,6 +23,10 @@
 
 	qcom,msm-id = <QCOM_ID_SM7125 0x0>;
 
+	aliases {
+		wifi0 = &wifi;
+	};
+
 	gpio-keys {
 		compatible = "gpio-keys";
 
@@ -638,6 +642,16 @@
 &usb_1_qmpphy {
 	vdda-phy-supply = <&vreg_l4a_0p9>;
 	vdda-pll-supply = <&vreg_l3c_1p2>;
+
+	status = "okay";
+};
+
+&wifi {
+	vdd-0.8-cx-mx-supply = <&vreg_l9a_0p8>;
+	vdd-1.8-xo-supply = <&vreg_l1c_1p8>;
+	vdd-1.3-rfa-supply = <&vreg_l2c_1p3>;
+	vdd-3.3-ch0-supply = <&vreg_l10c_3p3>;
+	vdd-3.3-ch1-supply = <&vreg_l11c_3p3>;
 
 	status = "okay";
 };
