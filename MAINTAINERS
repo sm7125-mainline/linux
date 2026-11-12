@@ -23325,6 +23325,12 @@ F:	drivers/firmware/qcom/qcom_pas.h
 F:	drivers/firmware/qcom/qcom_pas_tee.c
 F:	include/linux/firmware/qcom/qcom_pas.h
 
+QUALCOMM QGAUGE FUEL GAUGE DRIVER
+M:	Val Packett <val@packett.cool>
+L:	linux-arm-msm@vger.kernel.org
+S:	Maintained
+F:	Documentation/devicetree/bindings/power/supply/qcom,qg.yaml
+
 QUALCOMM SMB CHARGER DRIVER
 M:	Casey Connolly <casey.connolly@linaro.org>
 L:	linux-arm-msm@vger.kernel.org
