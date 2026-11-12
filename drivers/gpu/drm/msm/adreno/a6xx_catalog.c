@@ -865,6 +865,7 @@ static const struct adreno_info a6xx_gpus[] = {
 			{ 0,   0 },
 			{ 169, 1 },
 			{ 174, 2 },
+			{ 159, 3 },
 		),
 	}, {
 		.machine = "qcom,sm4350",
