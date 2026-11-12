@@ -381,6 +381,25 @@
 	memory-region = <&ipa_fw_mem>;
 };
 
+&i2c4 {
+	status = "okay";
+
+	sm5714-charger@49 {
+		compatible = "siliconmitus,sm5714-charger";
+		reg = <0x49>;
+
+		siliconmitus,enable-autostop;
+		siliconmitus,input-current-limit = <1300>;
+		siliconmitus,charging-current = <1300>;
+		siliconmitus,topoff-current = <225>;
+	};
+
+	sm5714-fg@71 {
+		compatible = "siliconmitus,sm5714-fg";
+		reg = <0x71>;
+	};
+};
+
 &i2c7 {
 	status = "okay";
 
@@ -398,6 +417,7 @@
 		pinctrl-0 = <&ts_int_default>;
 		pinctrl-names = "default";
 	};
+};
 
 &mdss {
 	status = "okay";
@@ -481,6 +501,11 @@
 
 &qfprom {
 	vcc-supply = <&vreg_l11a_1p8>;
+};
+
+&qup_i2c4_default {
+	drive-strength = <2>;
+	bias-disable;
 };
 
 &qup_i2c7_default {
