@@ -15,7 +15,12 @@ description:
 
 properties:
   compatible:
-    const: qcom,sc7280-lpass-lpi-pinctrl
+    oneOf:
+      - enum:
+          - qcom,sc7280-lpass-lpi-pinctrl
+      - items:
+          - const: qcom,sc7180-lpass-lpi-pinctrl
+          - const: qcom,sc7280-lpass-lpi-pinctrl
 
   reg:
     maxItems: 2
