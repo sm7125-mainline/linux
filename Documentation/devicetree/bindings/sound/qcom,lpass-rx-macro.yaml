@@ -27,6 +27,8 @@ properties:
               - qcom,sm8750-lpass-rx-macro
               - qcom,x1e80100-lpass-rx-macro
           - const: qcom,sm8550-lpass-rx-macro
+          - const: qcom,sc7180-lpass-rx-macro
+          - const: qcom,sm8250-lpass-rx-macro
 
   reg:
     maxItems: 1
