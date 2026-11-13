@@ -9,6 +9,7 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include <dt-bindings/pinctrl/qcom,pmic-gpio.h>
+#include <dt-bindings/sound/qcom,q6asm.h>
 #include "sm7125.dtsi"
 #include "pm6150.dtsi"
 #include "pm6150l.dtsi"
@@ -48,6 +49,57 @@
 			linux,input-type = <EV_SW>;
 			linux,code = <SW_LID>;
 			debounce-interval = <15>;
+		};
+	};
+
+	i2c-speaker {
+		compatible = "i2c-gpio";
+
+		sda-gpios = <&tlmm 88 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+		scl-gpios = <&tlmm 89 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+
+		i2c-gpio,delay-us = <2>;
+
+		pinctrl-0 = <&tas2562_i2c_default>;
+		pinctrl-names = "default";
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		tas2562_r: codec@4c {
+			compatible = "ti,tas2562";
+			reg = <0x4c>;
+
+			interrupts-extended = <&tlmm 90 IRQ_TYPE_NONE>;
+			shutdown-gpios = <&tlmm 94 GPIO_ACTIVE_HIGH>;
+
+			sound-name-prefix = "Right";
+
+			ti,vmon-slot-no = <1>;
+			ti,imon-slot-no = <0>;
+
+			pinctrl-0 = <&tas2562_default>;
+			pinctrl-names = "default";
+
+			#sound-dai-cells = <0>;
+		};
+
+		tas2562_l: codec@4d {
+			compatible = "ti,tas2562";
+			reg = <0x4d>;
+
+			interrupts-extended = <&tlmm 90 IRQ_TYPE_NONE>;
+			shutdown-gpios = <&tlmm 94 GPIO_ACTIVE_HIGH>;
+
+			sound-name-prefix = "Left";
+
+			ti,vmon-slot-no = <1>;
+			ti,imon-slot-no = <0>;
+
+			pinctrl-0 = <&tas2562_default>;
+			pinctrl-names = "default";
+
+			#sound-dai-cells = <0>;
 		};
 	};
 
@@ -143,6 +195,40 @@
 	vibrator {
 		compatible = "gpio-vibrator";
 		enable-gpios = <&tlmm 57 GPIO_ACTIVE_HIGH>;
+	};
+
+	wcd938x: audio-codec {
+		compatible = "qcom,wcd9380-codec";
+
+		pinctrl-0 = <&wcd_default>;
+		pinctrl-names = "default";
+
+		/* Samsung changes from downstream tree
+		 * qcom,micbias2-microvolt = <2800000>;
+		 * qcom,mbhc-buttons-vthreshold-microvolt = <13000 88000 138000 225000 450000 450000 450000 450000>;
+		 * qcom,mbhc-headset-vthreshold-microvolt = <9999000>;
+		 * qcom,mbhc-headphone-vthreshold-microvolt = <640000>;
+		 */
+		qcom,micbias1-microvolt = <1800000>;
+		qcom,micbias2-microvolt = <1800000>;
+		qcom,micbias3-microvolt = <1800000>;
+		qcom,micbias4-microvolt = <1800000>;
+
+		qcom,mbhc-buttons-vthreshold-microvolt = <75000 150000 237000 500000 500000 500000 500000 500000>;
+		qcom,mbhc-headset-vthreshold-microvolt = <1700000>;
+		qcom,mbhc-headphone-vthreshold-microvolt = <50000>;
+
+		qcom,rx-device = <&wcd_rx>;
+		qcom,tx-device = <&wcd_tx>;
+
+		reset-gpios = <&tlmm 58 GPIO_ACTIVE_LOW>;
+
+		vdd-buck-supply = <&vreg_l15a_1p8>;
+		vdd-rxtx-supply = <&vreg_l10a_1p8>;
+		vdd-io-supply = <&vreg_l10a_1p8>;
+		vdd-mic-bias-supply = <&vreg_bob>;
+
+		#sound-dai-cells = <1>;
 	};
 };
 
@@ -499,6 +585,35 @@
 	status = "okay";
 };
 
+&q6afedai {
+	dai@113 {
+		reg = <RX_CODEC_DMA_RX_0>;
+	};
+
+	dai@120 {
+		reg = <TX_CODEC_DMA_TX_3>;
+	};
+
+	dai@127 {
+		reg = <QUINARY_MI2S_RX>;
+		qcom,sd-lines = <0>;
+	};
+};
+
+&q6asmdai {
+	dai@0 {
+		reg = <0>;
+	};
+
+	dai@1 {
+		reg = <1>;
+	};
+
+	dai@2 {
+		reg = <2>;
+	};
+};
+
 &qfprom {
 	vcc-supply = <&vreg_l11a_1p8>;
 };
@@ -525,6 +640,10 @@
 	memory-region = <&adsp_mem>;
 };
 
+&rxmacro {
+	status = "okay";
+};
+
 &sdhc_2 {
 	vmmc-supply = <&vreg_l9c_2p95>;
 	vqmmc-supply = <&vreg_l6c_3p0>;
@@ -534,6 +653,122 @@
 	pinctrl-names = "default", "sleep";
 
 	status = "okay";
+};
+
+&sound {
+	compatible = "qcom,sm8250-sndcard";
+	pinctrl-0 = <&i2s1_active>;
+	pinctrl-names = "default";
+	audio-routing =
+		"IN1_HPHL", "HPHL_OUT",
+		"IN2_HPHR", "HPHR_OUT",
+		"AMIC1", "MIC BIAS1",
+		"AMIC2", "MIC BIAS2",
+		"AMIC4", "MIC BIAS3",
+		"TX SWR_ADC0", "ADC1_OUTPUT",
+		"TX SWR_ADC1", "ADC2_OUTPUT",
+		"TX SWR_ADC3", "ADC4_OUTPUT";
+
+	mm1-dai-link {
+		link-name = "MultiMedia1";
+		cpu {
+			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA1>;
+		};
+	};
+
+	mm2-dai-link {
+		link-name = "MultiMedia2";
+		cpu {
+			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA2>;
+		};
+	};
+
+	mm3-dai-link {
+		link-name = "MultiMedia3";
+		cpu {
+			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA3>;
+		};
+	};
+
+	i2s-dai-link {
+		link-name = "I2S Playback";
+		cpu {
+			sound-dai = <&q6afedai QUINARY_MI2S_RX>;
+		};
+
+		platform {
+			sound-dai = <&q6routing>;
+		};
+
+		codec {
+			sound-dai = <&tas2562_r>, <&tas2562_l>;
+		};
+	};
+
+	wcd-playback-dai-link {
+		link-name = "WCD Playback";
+		cpu {
+			sound-dai = <&q6afedai RX_CODEC_DMA_RX_0>;
+		};
+
+		codec {
+			sound-dai = <&wcd938x 0>, <&swr1 0>, <&rxmacro 0>;
+		};
+
+		platform {
+			sound-dai = <&q6routing>;
+		};
+	};
+
+	wcd-capture-dai-link {
+		link-name = "WCD Capture";
+		cpu {
+			sound-dai = <&q6afedai TX_CODEC_DMA_TX_3>;
+		};
+
+		codec {
+			sound-dai = <&wcd938x 1>, <&swr2 0>, <&txmacro 0>;
+		};
+
+		platform {
+			sound-dai = <&q6routing>;
+		};
+	};
+};
+
+&swr1 {
+	status = "okay";
+
+	wcd_rx: wcd9380-rx@0,4 {
+		compatible = "sdw20217010d00";
+		reg = <0 4>;
+
+		/*
+		 * WCD9380 RX Port 1 (HPH_L/R)      <=> SWR1 Port 1 (HPH_L/R)
+		 * WCD9380 RX Port 2 (CLSH)         <=> SWR1 Port 2 (CLSH)
+		 * WCD9380 RX Port 3 (COMP_L/R)     <=> SWR1 Port 3 (COMP_L/R)
+		 * WCD9380 RX Port 4 (LO)           <=> SWR1 Port 4 (LO)
+		 * WCD9380 RX Port 5 (DSD_L/R)      <=> SWR1 Port 5 (DSD_L/R)
+		 */
+		qcom,rx-port-mapping = <1 2 3 4 5>;
+	};
+};
+
+&swr2 {
+	status = "okay";
+
+	wcd_tx: wcd9380-tx@0,3 {
+		compatible = "sdw20217010d00";
+		reg = <0 3>;
+
+		/*
+		 * WCD9380 TX Port 1 (ADC1,2)             <=> SWR2 Port 2 (TX SWR_INPUT 0,1,2,3)
+		 * WCD9380 TX Port 2 (ADC3,4)             <=> SWR2 Port 3 (TX SWR_INPUT 4,5,6,7)
+		 * WCD9380 TX Port 3 (DMIC0,1,2,3 & MBHC) <=> SWR2 Port 4 (TX SWR_INPUT 8,9,10,11)
+		 * WCD9380 TX Port 4 (DMIC4,5,6,7)        <=> SWR2 Port 5 (TX SWR_INPUT 12,13,14,15)
+		 */
+		qcom,tx-port-mapping = <2 3 4 5>;
+	};
 };
 
 &tlmm {
@@ -619,6 +854,13 @@
 		};
 	};
 
+	wcd_default: wcd-reset-n-active-state {
+		pins = "gpio58";
+		function = "gpio";
+		drive-strength = <16>;
+		bias-disable;
+		output-low;
+	};
 
 	sdc2_on: sdc2-on-state {
 		clk-pins {
@@ -673,6 +915,24 @@
 			drive-strength = <2>;
 		};
 	};
+
+	tas2562_i2c_default: tas2562-default-state {
+		/* SDA, SCL */
+		pins = "gpio88", "gpio89";
+		function = "gpio";
+		bias-disable;
+	};
+
+	tas2562_default: tas2562-default-state {
+		/* INT, EN */
+		pins = "gpio90", "gpio94";
+		function = "gpio";
+		bias-disable;
+	};
+};
+
+&txmacro {
+	status = "okay";
 };
 
 &uart3 {
@@ -738,6 +998,12 @@
 &usb_1_qmpphy {
 	vdda-phy-supply = <&vreg_l4a_0p9>;
 	vdda-pll-supply = <&vreg_l3c_1p2>;
+
+	status = "okay";
+};
+
+&vamacro {
+	qcom,dmic-sample-rate = <600000>;
 
 	status = "okay";
 };
