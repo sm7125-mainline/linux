@@ -53,6 +53,11 @@
 	reg = <0x0 0xf3700000 0x0 0x202000>;
 };
 
+&sound {
+	compatible = "samsung,a72q-sndcard";
+	model = "Samsung-a72q";
+};
+
 &venus {
 	firmware-name = "qcom/sm7125/a72q/venus.mbn";
 };

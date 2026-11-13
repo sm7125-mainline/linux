@@ -53,6 +53,11 @@
 	reg = <0x0 0xf4f00000 0x0 0x202000>;
 };
 
+&sound {
+	compatible = "samsung,a52q-sndcard";
+	model = "Samsung-a52q";
+};
+
 &venus {
 	firmware-name = "qcom/sm7125/a52q/venus.mbn";
 };
