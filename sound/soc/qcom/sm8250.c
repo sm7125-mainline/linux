@@ -171,9 +171,46 @@ static int sm8250_snd_hw_free(struct snd_pcm_substream *substream)
 	return qcom_snd_sdw_hw_free(substream, &data->stream_prepared[cpu_dai->id]);
 }
 
+static int sm8250_snd_hw_params(struct snd_pcm_substream *substream,
+				struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
+	struct snd_soc_dai *codec_dai;
+	struct sm8250_snd_data *pdata = snd_soc_card_get_drvdata(rtd->card);
+	int j, ret;
+
+	for_each_rtd_codec_dais(rtd, j, codec_dai) {
+		if (!codec_dai->component->name_prefix)
+			break;
+
+		if (!strcmp(codec_dai->component->name_prefix, "Left")) {
+			ret = snd_soc_dai_set_tdm_slot(codec_dai, 0x01,
+						       0x03, 8, 16);
+			if (ret < 0) {
+				dev_err(rtd->dev, "DEV0 tdm slot error: %pe", ERR_PTR(ret));
+				return ret;
+			}
+		}
+
+		if (!strcmp(codec_dai->component->name_prefix, "Right")) {
+			ret = snd_soc_dai_set_tdm_slot(codec_dai, 0x02,
+						       0x03, 8, 16);
+			if (ret < 0) {
+				dev_err(rtd->dev, "DEV1 tdm slot error: %pe", ERR_PTR(ret));
+				return ret;
+			}
+		}
+	}
+
+	return 0;
+}
+
+
 static const struct snd_soc_ops sm8250_be_ops = {
 	.startup = sm8250_snd_startup,
 	.shutdown = qcom_snd_sdw_shutdown,
+	.hw_params = sm8250_snd_hw_params,
 	.hw_free = sm8250_snd_hw_free,
 	.prepare = sm8250_snd_prepare,
 };
