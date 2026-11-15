@@ -231,6 +231,8 @@ static const struct of_device_id snd_sm8250_dt_match[] = {
 	{ .compatible = "qcom,qrb5165-rb5-sndcard", .data = "sm8250" },
 	{ .compatible = "qcom,sdm660-sndcard", .data = "sdm660" },
 	{ .compatible = "qcom,sm8250-sndcard", .data = "sm8250" },
+	{ .compatible = "samsung,a52q-sndcard", .data = "sm7125" },
+	{ .compatible = "samsung,a72q-sndcard", .data = "sm7125" },
 	{}
 };
 
