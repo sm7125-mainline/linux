@@ -380,6 +380,10 @@ static int q6asm_dai_open(struct snd_soc_component *component,
 
 	stream_id = cpu_dai->driver->id;
 
+	ret = snd_pcm_hw_constraint_msbits(runtime, 0, 24, 16);
+	if (ret < 0)
+		return ret;
+
 	pdata = snd_soc_component_get_drvdata(component);
 	if (!pdata) {
 		dev_err(dev, "Drv data not found ..\n");
@@ -506,10 +510,8 @@ static int q6asm_dai_hw_params(struct snd_soc_component *component,
 
 	switch (params_format(params)) {
 	case SNDRV_PCM_FORMAT_S16_LE:
-		prtd->bits_per_sample = 16;
-		break;
 	case SNDRV_PCM_FORMAT_S24_LE:
-		prtd->bits_per_sample = 24;
+		prtd->bits_per_sample = 16;
 		break;
 	}
 
