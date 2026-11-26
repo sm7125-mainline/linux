@@ -283,6 +283,23 @@
 		};
 	};
 
+	vdd_nfc_io_1p8: regulator-nfc-ldo {
+		compatible = "regulator-fixed";
+		regulator-name = "nfc-ldo";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+
+		gpio = <&tlmm 68 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+
+		vin-supply = <&vreg_bob>;
+
+		startup-delay-us = <200>;
+
+		pinctrl-0 = <&nfc_ldo_default>;
+		pinctrl-names = "default";
+	};
+
 	vibrator {
 		compatible = "gpio-vibrator";
 		enable-gpios = <&tlmm 57 GPIO_ACTIVE_HIGH>;
@@ -556,6 +573,27 @@
 
 &ipa {
 	memory-region = <&ipa_fw_mem>;
+};
+
+&i2c0 {
+	status = "okay";
+
+	clock-frequency = <400000>;
+
+	nfc@27 {
+		compatible = "samsung,s3nrn4v";
+		reg = <0x27>;
+
+		interrupts-extended = <&tlmm 37 IRQ_TYPE_EDGE_RISING>;
+		en-gpios = <&tlmm 12 GPIO_ACTIVE_HIGH>;
+		wake-gpios = <&tlmm 36 GPIO_ACTIVE_HIGH>;
+		clocks = <&rpmhcc RPMH_LN_BB_CLK3>;
+
+		pvdd-supply = <&vdd_nfc_io_1p8>;
+
+		pinctrl-0 = <&nfc_default>;
+		pinctrl-names = "default";
+	};
 };
 
 &i2c4 {
@@ -979,6 +1017,29 @@
 		bias-pull-down;
 	};
 	
+	nfc_default: nfc-default-state {
+		pd-pins {
+			pins = "gpio12";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+
+		wake-pins {
+			pins = "gpio36";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+
+		irq-pins {
+			pins = "gpio37";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-pull-down;
+		};
+	};
+
 	qup_uart3_sleep: qup-uart3-sleep-state {
 		cts-pins {
 			/*
@@ -1036,6 +1097,13 @@
 		drive-strength = <16>;
 		bias-disable;
 		output-low;
+	};
+
+	nfc_ldo_default: nfc-ldo-default-state {
+		pins = "gpio68";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
 	};
 
 	sdc2_on: sdc2-on-state {
